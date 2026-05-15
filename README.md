@@ -211,6 +211,7 @@ Financial Health Score (0–100)
 ### Phase 1 — Core (Weeks 1–4)
 - [x] Project architecture & folder structure
 - [x] Flutter dashboard UI (dark futuristic design)
+- [x] HTML interactive prototype (docs/preview.html) — todas as 5 telas navegáveis
 - [ ] FastAPI backend with PostgreSQL
 - [ ] JWT authentication
 - [ ] PDF upload endpoint

@@ -110,6 +110,19 @@ Model saves to `backend/app/services/ai/models/categorizer.joblib`.
 | `TESSERACT_CMD` | Windows only | Path to `tesseract.exe` |
 | `DEBUG` | no | Enables FastAPI debug mode |
 
+## Preview HTML
+
+`docs/preview.html` é um protótipo interativo self-contained (sem dependências) com todas as 5 telas navegáveis. Abrir direto no browser. Usar como referência visual antes de implementar qualquer nova tela no Flutter — o design system deve ser idêntico.
+
+## Próximos Passos (Fase 1 restante)
+
+1. `backend/app/core/database.py` — async engine + session factory
+2. `backend/app/repositories/` — TransactionRepository, UserRepository
+3. `backend/app/api/v1/routes/auth.py` — register + login + refresh
+4. `backend/app/api/v1/routes/uploads.py` — POST /pdf com SSE progress stream
+5. Conectar Flutter ao backend: `frontend/lib/core/network/` (Dio + token interceptor)
+6. Treinar categorizer com dados reais de faturas Itaú/Santander
+
 ## LGPD Constraints
 
 - PDFs must be processed in memory and not persisted to disk after extraction
