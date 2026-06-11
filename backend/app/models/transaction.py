@@ -27,14 +27,14 @@ class Transaction(Base):
     __tablename__ = "transactions"
 
     id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id             = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    upload_id           = Column(UUID(as_uuid=True), ForeignKey("uploads.id"), nullable=True)
-    date                = Column(DateTime, nullable=False)
+    user_id             = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    upload_id           = Column(UUID(as_uuid=True), ForeignKey("uploads.id", ondelete="SET NULL"), nullable=True, index=True)
+    date                = Column(DateTime, nullable=False, index=True)
     description         = Column(String(500), nullable=False)
     merchant            = Column(String(200))
     amount              = Column(Float, nullable=False)
     type                = Column(Enum(TransactionType), nullable=False)
-    category            = Column(Enum(TransactionCategory), default=TransactionCategory.OTHER)
+    category            = Column(Enum(TransactionCategory), default=TransactionCategory.OTHER, index=True)
     subcategory         = Column(String(100))
     is_recurring        = Column(Boolean, default=False)
     is_subscription     = Column(Boolean, default=False)

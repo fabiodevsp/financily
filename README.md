@@ -10,6 +10,24 @@ Financily não é um simples rastreador de gastos. É um **assistente financeiro
 
 ---
 
+## Status Atual (2026-06-11)
+
+> Detalhes completos em [`docs/project_status.md`](docs/project_status.md).
+
+| Área | Status |
+|---|---|
+| **Backend (FastAPI)** | ✅ Sobe sem erros, 21 rotas registradas, `/api/docs` e `/openapi.json` funcionando |
+| **Autenticação (JWT)** | ✅ Funcional — `/auth/register`, `/auth/login`, `/auth/refresh` validados ponta a ponta (access 15min + refresh 30d) |
+| **Banco de dados** | ✅ Schema completo (`users`, `uploads`, `transactions`) via SQLAlchemy 2.0 async |
+| **Migrations (Alembic)** | ✅ Configurado (env.py async) — migration inicial validada (upgrade/downgrade) |
+| **Endpoints de domínio** | 🟡 `uploads`/`transactions` retornam listagem básica; `analytics`/`assistant`/`reports` são stubs `501` documentados |
+| **Frontend (Flutter)** | 🟡 UI de Login e Dashboard prontas com dados mock; sem scaffold de plataforma; não conectado ao backend |
+| **PDF parsing / OCR / IA** | 🟡 Pipelines escritos (`extractor.py`, `categorizer.py`, `health_score.py`); não integrados aos endpoints |
+
+Estimativa de conclusão do MVP: **~20–25%**.
+
+---
+
 ## Tech Stack
 
 | Camada | Tecnologia |
@@ -212,12 +230,12 @@ Financial Health Score (0–100)
 - [x] Project architecture & folder structure
 - [x] Flutter dashboard UI (dark futuristic design)
 - [x] HTML interactive prototype (docs/preview.html) — todas as 5 telas navegáveis
-- [ ] FastAPI backend with PostgreSQL
-- [ ] JWT authentication
-- [ ] PDF upload endpoint
-- [ ] Itaú PDF parser
-- [ ] Basic transaction categorization
-- [ ] Dashboard screen
+- [x] FastAPI backend foundation (async SQLAlchemy + Alembic, schema for `users`/`uploads`/`transactions`)
+- [x] JWT authentication (register, login, refresh)
+- [ ] PDF upload endpoint (router stub exists, lógica de upload pendente)
+- [ ] Itaú PDF parser (lógica pronta em `services/pdf/extractor.py`, não integrada)
+- [ ] Basic transaction categorization (lógica pronta em `services/ai/categorizer.py`, não integrada)
+- [ ] Dashboard screen conectado ao backend (UI mock pronta, `/analytics/dashboard` ainda é stub)
 
 ### Phase 2 — AI (Weeks 5–8)
 - [ ] NLP categorization engine
