@@ -1,0 +1,320 @@
+You are a senior software architect, senior Flutter engineer, senior Python engineer, senior AI engineer, senior data analyst, and senior UI/UX designer specialized in fintech SaaS platforms.
+
+Your mission is to architect and generate the initial production-ready version of a modern AI-powered financial intelligence platform called “Financily”.
+
+The app must NOT be a simple expense tracker.
+It must behave like an intelligent financial analysis assistant.
+
+====================================================
+PRODUCT VISION
+====================================================
+
+Financily is an AI-powered personal financial intelligence platform that:
+
+- Reads credit card invoices in PDF format
+- Reads bank statements in PDF format
+- Extracts transactions automatically
+- Categorizes expenses intelligently
+- Detects unnecessary spending
+- Detects recurring subscriptions
+- Tracks monthly income
+- Calculates monthly balance after expenses
+- Generates predictive financial analysis
+- Generates behavioral financial insights
+- Creates executive dashboards
+- Provides AI-generated savings recommendations
+- Supports future Open Finance integration
+- Works across Windows, Android, iOS, and macOS
+
+The design language must feel like a premium futuristic fintech product inspired by:
+- Nubank
+- Apple Finance
+- Linear
+- modern AI dashboards
+
+====================================================
+PRIMARY GOALS
+====================================================
+
+The platform must:
+- feel premium
+- feel intelligent
+- feel modern
+- feel fast
+- feel emotionally engaging
+- provide real value through analytics and AI
+
+====================================================
+TECH STACK
+====================================================
+
+Frontend:
+- Flutter
+- Riverpod
+- GoRouter
+- Material 3
+- Responsive architecture
+- Dark futuristic UI
+
+Backend:
+- Python
+- FastAPI
+- SQLAlchemy
+- PostgreSQL
+- Pydantic
+- JWT authentication
+
+AI / Analytics:
+- Pandas
+- NumPy
+- Scikit-Learn
+- Prophet
+- OCR pipeline
+- NLP transaction categorization
+
+PDF Parsing:
+- pdfplumber
+- PyMuPDF
+- OCR fallback using Tesseract
+
+Charts:
+- FL Chart
+
+Local storage:
+- SQLite for offline support
+
+Cloud architecture:
+- prepared for future SaaS scaling
+
+====================================================
+PLATFORMS
+====================================================
+
+The app must support:
+- Windows
+- Android
+- iOS
+- macOS
+
+====================================================
+AUTHENTICATION
+====================================================
+
+Implement:
+- email/password authentication
+- JWT authentication
+- encrypted local storage
+- secure credential handling
+
+====================================================
+SUPPORTED BANKS (INITIAL MVP)
+====================================================
+
+Initially support:
+- Itaú
+- Santander
+
+The architecture must allow future support for:
+- Nubank
+- Inter
+- Bradesco
+- C6
+- Mercado Pago
+
+====================================================
+MAIN FEATURES
+====================================================
+
+1. Dashboard Screen
+- total income
+- total expenses
+- remaining balance
+- monthly trends
+- spending heatmaps
+- category distribution
+- recurring expenses
+- subscription detection
+- financial health score
+
+2. Upload System
+- upload PDF invoices
+- upload bank statements
+- drag-and-drop on desktop
+- mobile upload support
+
+3. PDF Extraction Engine
+- detect tables
+- parse transactions
+- normalize dates
+- normalize currency
+- identify merchants
+- identify installments
+- detect duplicate transactions
+
+4. AI Categorization Engine
+Automatically classify:
+- food
+- transport
+- shopping
+- subscriptions
+- health
+- travel
+- entertainment
+- bills
+- salary
+- investments
+
+5. Predictive Analytics
+Generate:
+- future balance forecast
+- overspending alerts
+- projected monthly expenses
+- savings opportunities
+- anomaly detection
+
+6. Behavioral Analysis
+Detect:
+- impulsive purchases
+- unusual spending spikes
+- recurring wasteful patterns
+- emotional spending behavior
+- excessive food delivery spending
+- night spending behavior
+
+7. AI Financial Assistant
+Create a conversational AI assistant capable of:
+- explaining expenses
+- explaining trends
+- giving recommendations
+- answering financial questions
+
+Examples:
+“Why did I spend more this month?”
+“How much can I save?”
+“What subscriptions are unnecessary?”
+
+8. Notifications
+Implement smart notifications:
+- overspending alerts
+- unusual transaction alerts
+- subscription reminders
+- low balance prediction
+- monthly financial summary
+
+9. Export System
+Export:
+- PDF reports
+- Excel reports
+- CSV reports
+
+10. Settings
+- dark/light themes
+- notification settings
+- export settings
+- account management
+
+====================================================
+DESIGN SYSTEM
+====================================================
+
+Style:
+- futuristic fintech
+- dark navy blue primary
+- white typography
+- premium gradients
+- glassmorphism
+- smooth animations
+- modern cards
+- rounded UI
+- premium charts
+- AI-inspired visuals
+
+Main colors:
+- dark navy blue
+- deep blue gradients
+- white
+- subtle cyan accents
+
+The interface must look premium enough to compete with modern fintech startups.
+
+====================================================
+ARCHITECTURE REQUIREMENTS
+====================================================
+
+Use clean architecture.
+
+Frontend layers:
+- presentation
+- application
+- domain
+- infrastructure
+
+Backend layers:
+- routers
+- services
+- repositories
+- models
+- schemas
+
+====================================================
+IMPORTANT ENGINEERING REQUIREMENTS
+====================================================
+
+Generate:
+- scalable folder structure
+- modular architecture
+- reusable widgets
+- reusable services
+- strongly typed models
+- proper error handling
+- loading states
+- empty states
+- responsive layouts
+- secure API handling
+
+====================================================
+DELIVERABLES
+====================================================
+
+Generate:
+
+1. Complete project architecture
+2. Folder structure
+3. Database schema
+4. Flutter app structure
+5. FastAPI backend structure
+6. Authentication flow
+7. OCR pipeline architecture
+8. AI analytics architecture
+9. Dashboard wireframe
+10. Modern UI components
+11. Initial production-ready code
+12. API endpoints
+13. Data models
+14. State management structure
+15. Suggested roadmap
+16. Deployment strategy
+17. SaaS scaling strategy
+18. Security best practices
+19. LGPD considerations
+20. Future Open Finance integration plan
+
+====================================================
+IMPORTANT
+====================================================
+
+Do NOT generate toy examples.
+Do NOT generate simplistic code.
+Do NOT generate tutorial-level architecture.
+
+Generate production-oriented architecture and code as if building a real fintech startup MVP.
+
+Start by generating:
+1. Complete system architecture
+2. Folder structure
+3. Database design
+4. MVP roadmap
+5. Backend architecture
+6. Frontend architecture
+
+Only then proceed to implementation.
