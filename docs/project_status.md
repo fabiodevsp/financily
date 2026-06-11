@@ -1,7 +1,24 @@
 # Financily — Status do Projeto
 
 > Auditoria técnica completa. Última atualização: 2026-06-11.
-> Branch: `master` · Commits: `2639e79` (arquitetura inicial) → `6782076` (preview HTML + docs) → `1fb4c96` (auditoria) → **fundação do backend (esta sessão, commit pendente)**
+> Branch: `master` · Commits: `2639e79` (arquitetura inicial) → `6782076` (preview HTML + docs) → `1fb4c96` (auditoria) → `4142824` (fundação do backend) → **governança e estruturação do projeto (esta sessão, commit pendente)**
+
+---
+
+## Visão Geral por Área (Estado Atual)
+
+| Área | Status | Detalhe |
+|---|---|---|
+| **Backend** | ✅ Funcional — FastAPI sobe sem erros, 21 rotas registradas, Clean Architecture (`routes` → `services` → `repositories` → `models`) | §3, §12 |
+| **Banco de dados** | ✅ Schema completo (`users`, `uploads`, `transactions` + 4 enums Postgres) via Alembic, validado em SQLite (upgrade/downgrade) | §3, §12 |
+| **Autenticação** | ✅ JWT completo (`register`/`login`/`refresh`) testado ponta a ponta; falta `/auth/logout` e revogação de refresh token | §3, §4, §12 |
+| **Migrations** | ✅ 1 migration inicial (`7132eab5146a_initial_schema`), validada upgrade/downgrade em SQLite + `--sql` offline para Postgres; **nunca rodou contra Postgres real** | §3, §8 |
+| **APIs** | 🟡 Contrato completo (21 rotas documentadas no OpenAPI); auth + list endpoints reais, demais (`uploads/pdf`, filtros de transactions, analytics, assistant, reports) ainda stubs `501` | §4, §5, §12 |
+| **Frontend** | 🟡 UI de 2 telas (login, dashboard) com dados mock; sem scaffold de plataforma (`flutter create .` nunca executado); não conectado ao backend | §1, §4, §12 |
+| **Analytics** | 🟡 `health_score.py` implementado (lógica pura, 4 dimensões), não exposto via API; forecast/behavioral/heatmap não iniciados | §3, §5, §12 |
+| **OCR** | 🟡 Pipeline `extractor.py` (pdfplumber → PyMuPDF → Tesseract OCR) codificado, não integrado a nenhum endpoint nem testado em fluxo real | §3, §4, §12 |
+| **IA (Categorizador)** | 🟡 Regras por keyword (10 categorias) prontas; pipeline ML (TF-IDF + LogisticRegression) existe, mas `train()` nunca foi chamado — sem `categorizer.joblib` | §3, §4, §12 |
+| **Upload de PDF** | ❌ Não iniciado — endpoint `POST /uploads/pdf` ainda não existe; é a próxima tarefa recomendada (Opção A em `docs/next_session.md`) | §5, §13 |
 
 ---
 
@@ -10,12 +27,16 @@
 ```
 financily/
 ├── CLAUDE.md
+├── CLAUDE_PROJECT_RULES.md             ✅ NOVO — regras permanentes de governança (CTO permanente)
 ├── README.md
 ├── docs/
 │   ├── preview.html                   ✅ protótipo HTML estático (820 linhas, 5 telas)
 │   ├── project_status.md              ✅ este documento
 │   ├── prompt_inicial.txt             ✅ arquivado
-│   └── next_session.md                ✅ memória de continuidade
+│   ├── next_session.md                ✅ memória de continuidade
+│   ├── session_start.md               ✅ NOVO — workflow de início de sessão
+│   ├── session_end.md                 ✅ NOVO — workflow de encerramento de sessão
+│   └── {api,architecture,design}/     ❌ vazios (scaffolds de documentação)
 │
 ├── backend/
 │   ├── requirements.txt               ✅ (bcrypt pinado, ver §6)
@@ -91,7 +112,7 @@ financily/
 
 ## 2. Tecnologias e dependências
 
-**Backend** (Python 3.12, `requirements.txt`): FastAPI 0.111, Uvicorn, SQLAlchemy 2.0 (async/asyncpg), Alembic, Pydantic v2 + pydantic-settings, python-jose + passlib (JWT/bcrypt), **`bcrypt==4.0.1` (NOVO, pin obrigatório — ver §6)**, pdfplumber, PyMuPDF (`fitz`), pytesseract, Pillow, pandas, numpy, scikit-learn, prophet, nltk, joblib, httpx (duplicado — linhas 37 e 49, ainda não corrigido), pytest/pytest-asyncio/pytest-cov/faker.
+**Backend** (Python 3.12, `requirements.txt`): FastAPI 0.111, Uvicorn, SQLAlchemy 2.0 (async/asyncpg), Alembic, Pydantic v2 + pydantic-settings, python-jose + passlib (JWT/bcrypt), **`bcrypt==4.0.1` (pin obrigatório — ver §6)**, pdfplumber, PyMuPDF (`fitz`), pytesseract, Pillow, pandas, numpy, scikit-learn, prophet, nltk, joblib, httpx (duplicata removida nesta sessão — ver "Última Sessão"), pytest/pytest-asyncio/pytest-cov/faker.
 
 **Frontend** (Flutter ≥3.3, `pubspec.yaml`): inalterado — flutter_riverpod, riverpod_annotation, go_router, dio, retrofit, flutter_secure_storage, sqflite, hive_flutter, file_picker, desktop_drop, path_provider, fl_chart, google_fonts, shimmer, lottie, flutter_animate, cached_network_image, intl, freezed, json_serializable, dartz, logger, mockito.
 
@@ -180,7 +201,6 @@ financily/
 
 ## 7. Código morto / duplicado / não utilizado
 
-- `httpx` duplicado no requirements (inalterado).
 - `_parse_santander_row` é cópia funcional de `_parse_itau_row` (placeholder, redundante).
 - Quase toda a árvore de dependências do `pubspec.yaml` (Hive, sqflite, Retrofit, Freezed, dartz, lottie, shimmer, etc.) — declaradas, zero uso.
 - `prophet`, `nltk`, `numpy` no requirements — zero referências no código atual (scikit-learn/pandas usados pelo categorizer/health_score).
@@ -209,7 +229,7 @@ financily/
 - [x] ~~Setup Alembic (init async, primeira migration)~~ ✅ feito
 - [x] ~~`.env.example`~~ ✅ feito
 - [x] ~~`__init__.py` nos pacotes Python~~ ✅ feito
-- [ ] Remover duplicata `httpx` do requirements
+- [x] ~~Remover duplicata `httpx` do requirements~~ ✅ feito (sessão de governança)
 - [ ] Testes unitários para `extractor.py`, `categorizer.py`, `health_score.py`, e novos módulos (`security.py`, repositories, rotas de auth)
 - [ ] `flutter create .` para gerar scaffold de plataforma
 - [ ] Resolver fontes `Syne` (adicionar `.ttf` ou usar `google_fonts.GoogleFonts.syne()`)
@@ -287,9 +307,24 @@ financily/
 
 A fundação do backend (banco de dados, auth, schema, repositórios, Alembic, contrato de API completo via stubs) está pronta e validada. O que falta é majoritariamente: (a) lógica de negócio dos endpoints de domínio (upload, transactions, analytics), (b) conectar o Flutter ao backend, (c) scaffold de plataforma Flutter, (d) treinar o categorizador ML, (e) testes automatizados.
 
+A sessão de governança (esta sessão) **não altera este percentual** — é puramente estrutural (documentação, regras permanentes, auditoria).
+
 ---
 
-## Última Sessão
+## 15. Roadmap Atualizado
+
+| Fase | Escopo | Status |
+|---|---|---|
+| **Fase 1 — Fundação do Backend** | Banco de dados, auth JWT, schema, repositórios, Alembic, contrato de API (stubs) | ✅ Concluída (commit `4142824`) |
+| **Fase 1.5 — Governança e Estruturação** | `CLAUDE_PROJECT_RULES.md`, `docs/session_start.md`, `docs/session_end.md`, auditoria, atualização de `project_status.md`/`next_session.md` | ✅ Concluída (esta sessão) |
+| **Fase 2 — Primeira fatia vertical de valor** | Upload de PDF end-to-end (extractor → categorizer → repository) **ou** conexão Flutter↔Backend (`core/network/` + login real) | ⏭️ Próxima (ver `docs/next_session.md`) |
+| **Fase 3 — Domínio completo** | Transactions API (paginação/filtros/summary/update/delete), Analytics API real (`health-score`, `dashboard`, forecast), Categorizador ML treinado, Parser Santander real | ❌ Não iniciada |
+| **Fase 4 — Frontend completo** | `flutter create .` (scaffold de plataforma), 8+ telas conectadas ao backend, fontes Syne resolvidas | ❌ Não iniciada |
+| **Fase 5 — Produção** | Testes automatizados, PostgreSQL real validado, rate limiting/auth hardening, CI (`.github/workflows/`), exportações PDF/Excel/CSV, notificações, assistente IA | ❌ Não iniciada |
+
+---
+
+## Sessão Anterior — Fase 1 (Fundação do Backend)
 
 **Data**: 2026-06-11
 **Objetivo**: Implementar a Fase 1 da auditoria — fazer o backend subir sem erros e preparar a fundação para todas as próximas funcionalidades. Sem novas features, sem alterações no frontend/design system, sem OCR/IA/dashboards novos.
@@ -333,3 +368,61 @@ A fundação do backend (banco de dados, auth, schema, repositórios, Alembic, c
 - ✅ `/docs` funcionando
 - ✅ Migrations funcionando (upgrade + downgrade)
 - ✅ Autenticação funcional (register/login/refresh)
+
+---
+
+## Última Sessão — Fase 1.5 (Governança e Estruturação do Projeto)
+
+**Data**: 2026-06-11
+**Objetivo**: Sessão **sem novas funcionalidades**. Estruturar o Financily para desenvolvimento profissional de longo prazo: regras permanentes de governança, workflows de início/fim de sessão, memória de continuidade, documentação e auditoria rápida.
+
+### Arquivos criados
+- `CLAUDE_PROJECT_RULES.md` (raiz) — regras permanentes para Arquitetura, Segurança, SaaS, Fintech, Product Management, Análise de Dados, IA, Git, Documentação, Testes, Escalabilidade, LGPD e Continuidade do Projeto. Posiciona o Claude Code como "CTO permanente" do projeto.
+- `docs/session_start.md` — procedimento obrigatório de início de sessão (ler regras + status + continuidade, validar Git, verificar pendências, apresentar diagnóstico antes de implementar).
+- `docs/session_end.md` — procedimento obrigatório de encerramento (atualizar docs, revisar alterações/dependências, testar, commit Conventional Commits, push com confirmação, resumo executivo).
+
+### Arquivos atualizados
+- `backend/requirements.txt` — removida duplicata de `httpx==0.27.0` (estava nas seções "# HTTP Client" e "# Testing"; mantida apenas a primeira).
+- `docs/project_status.md` — este documento: nova seção "Visão Geral por Área", nova seção "Roadmap Atualizado" (§15), correções de seções 2/7/9 refletindo o fix do `httpx`, e esta seção.
+- `docs/next_session.md` — memória de continuidade atualizada (ver arquivo).
+
+### Auditoria (ETAPA 6) — achados
+
+**Arquivos órfãos**: nenhum encontrado. Os 36 arquivos `.py` em `backend/app/` (mesmo conjunto da auditoria da sessão anterior) estão todos referenciados/importados pela aplicação.
+
+**Dependências duplicadas**: 🔴 encontrada e ✅ corrigida — `httpx==0.27.0` aparecia duas vezes em `backend/requirements.txt` (seções "# HTTP Client" e "# Testing"). Removida a segunda ocorrência.
+
+**Imports inválidos**: nenhum erro de sintaxe — `ast.parse()` limpo em todos os arquivos `app/**/*.py`. Ao varrer todos os 36 módulos `app.*` com `pkgutil.walk_packages` + `importlib`, **3 falham** no venv mínimo local:
+- `app.services.ai.categorizer` → `ModuleNotFoundError: No module named 'joblib'`
+- `app.services.analytics.health_score` → `ModuleNotFoundError: No module named 'pandas'`
+- `app.services.pdf.extractor` → `ModuleNotFoundError: No module named 'pdfplumber'`
+
+Todas as três libs **já constam em `requirements.txt`**, mas não foram instaladas no venv mínimo criado na sessão anterior (ver "Dependências para a próxima sessão" em `docs/next_session.md`). **Não é um bug de código** — é esperado até que o venv seja completado para trabalhar nos módulos de PDF/IA/Analytics.
+
+**Diretórios vazios** (catálogo completo, fora os já listados na árvore da §1):
+- `ai/{behavioral,categorization,forecasting,ocr}/` (raiz) — scaffolds do diagrama de arquitetura do README, zero código.
+- `.github/workflows/` — sem CI configurado.
+- `docs/{api,architecture,design}/` — scaffolds de documentação.
+- `backend/app/middleware/` — apenas `__init__.py`, nenhum middleware registrado em `main.py`.
+- `backend/tests/{unit,integration}/` — zero testes em todo o projeto, apesar de pytest configurado.
+- `frontend/lib/core/{network,constants,utils}/` — `network/` é crítico para a Opção B (conectar Flutter ao backend).
+- `frontend/lib/features/{upload,transactions,analytics,assistant,reports}/` — scaffolds de feature vazios.
+- `frontend/lib/shared/{widgets,models}/` — vazios.
+- `frontend/assets/{fonts,images}/` — vazios (fontes `Syne-*.ttf` referenciadas em `pubspec.yaml` mas ausentes — débito conhecido).
+
+**Problemas de arquitetura**: nenhum novo encontrado. As camadas `api/routes` → `services` → `repositories` → `models` permanecem consistentes; `services/` não importa de `api/`; `repositories/` é a única camada com queries SQLAlchemy.
+
+**Débitos técnicos**: ver §9 (atualizada) — único item resolvido nesta sessão foi a duplicata do `httpx`. Demais itens (testes, scaffold Flutter, fontes Syne, validação contra Postgres real, parser Santander, ML não treinado) permanecem inalterados e documentados.
+
+### Validação executada
+- `git status --porcelain=v1` confirmado limpo antes do início da sessão.
+- Nenhuma alteração de código de runtime nesta sessão (exceto `requirements.txt`, que é apenas uma remoção de duplicata) — `pytest`/Alembic/boot da app não foram re-executados por não haver mudança que os afete.
+
+### Critérios de sucesso da sessão
+- ✅ `CLAUDE_PROJECT_RULES.md` criado com as 13 áreas solicitadas
+- ✅ `docs/session_start.md` criado
+- ✅ `docs/session_end.md` criado
+- ✅ `docs/next_session.md` atualizado (memória de continuidade)
+- ✅ `docs/project_status.md` atualizado (estado por área + roadmap)
+- ✅ Auditoria executada e documentada
+- ✅ Nenhuma nova funcionalidade implementada (conforme restrição explícita do usuário)
