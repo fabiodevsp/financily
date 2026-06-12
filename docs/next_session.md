@@ -1,7 +1,7 @@
 # Financily — Memória de Continuidade
 
-> Gerado em 2026-06-11, ao final da sessão "Fase 1.5 — Governança e Estruturação do Projeto".
-> A sessão anterior ("Fase 1 — Fundação do Backend", commit `4142824`) está documentada na seção "Sessão Anterior — Fase 1" de `docs/project_status.md`. O histórico desta sessão está em "Última Sessão — Fase 1.5" no mesmo arquivo.
+> Gerado em 2026-06-12, ao final da sessão "Fase 2 — Upload de PDF end-to-end".
+> A sessão anterior ("Fase 1.5 — Governança e Estruturação", commits `f8d9b78`/`f7dd82c`) está documentada em "Última Sessão — Fase 1.5" de `docs/project_status.md`. O histórico desta sessão está em "Última Sessão — Fase 2" no mesmo arquivo.
 >
 > **Antes de iniciar qualquer trabalho, siga `docs/session_start.md`.** Ao encerrar, siga `docs/session_end.md`. Regras permanentes de governança (CTO permanente) estão em `CLAUDE_PROJECT_RULES.md` (raiz do projeto).
 
@@ -9,109 +9,96 @@
 
 # Onde paramos
 
-A fundação do backend (Fase 1: FastAPI + SQLAlchemy 2.0 async + Alembic + JWT) está **completa, validada e committada** (`4142824`).
+A Fase 2 (primeira fatia vertical de valor real) está **completa e validada**: `POST /api/v1/uploads/pdf` agora processa um PDF de ponta a ponta — extrai transações em memória (`extractor.py`, refatorado para `bytes`/`BytesIO`), categoriza cada uma (`categorizer.py`, regras por keyword), persiste via `TransactionRepository.create()` com dedupe por `hash`, e atualiza o status do `Upload` (`PENDING`→`PROCESSING`→`COMPLETED`/`FAILED`).
 
-Esta sessão (Fase 1.5) **não alterou nenhuma funcionalidade de runtime** — foi uma sessão de governança/estruturação, conforme pedido explícito do usuário. O que mudou:
+26 testes automatizados novos (18 unitários para os helpers puros de `extractor.py` + 8 de integração para o endpoint) passam. O venv agora tem todas as deps de PDF/IA/teste instaladas (`pdfplumber`, `pymupdf`, `pytesseract`, `Pillow`, `pandas`, `numpy`, `scikit-learn`, `joblib`, `pytest`, `pytest-asyncio`, `pytest-cov`, `faker`, `aiosqlite`), exceto `prophet`/`nltk` (deferidos para a Fase 3).
 
-- Criada a camada permanente de governança: `CLAUDE_PROJECT_RULES.md` (raiz), `docs/session_start.md`, `docs/session_end.md`.
-- `docs/project_status.md` reescrito com uma visão consolidada por área ("Visão Geral por Área") e um roadmap atualizado por fases (§15).
-- Auditoria rápida executada (sem achados críticos novos) — único fix aplicado: removida a duplicata de `httpx==0.27.0` em `backend/requirements.txt`.
-
-O frontend Flutter **continua exatamente como estava**: UI mock (login + dashboard), sem scaffold de plataforma, não conectado ao backend.
+O frontend Flutter **continua exatamente como estava** (fora de escopo desta sessão): UI mock (login + dashboard), sem scaffold de plataforma, não conectado ao backend.
 
 ---
 
 # O que já funciona
 
-- `uvicorn app.main:app --reload --port 8000` sobe sem erros.
+- `uvicorn app.main:app --reload --port 8000` sobe sem erros, 22 rotas registradas.
 - `POST /api/v1/auth/register` → 201, valida e-mail único, hash de senha com bcrypt.
 - `POST /api/v1/auth/login` (OAuth2 form: `username`/`password`) → par de tokens JWT (access 15min, refresh 30d).
 - `POST /api/v1/auth/refresh` → valida claim `type=="refresh"`, emite novo par.
-- `GET /api/v1/uploads/` e `GET /api/v1/transactions/` → listagem real (vazia até existir dado), protegidos por JWT.
+- **`POST /api/v1/uploads/pdf`** (NOVO) → recebe PDF (multipart, `file` + `bank`), valida `content_type`/tamanho/`bank` suportado, extrai transações, categoriza, persiste com dedupe por hash, retorna `UploadResult` (`status`, `transactions_created`, `duplicates_skipped`, `error_message`).
+- `GET /api/v1/uploads/` e `GET /api/v1/transactions/` → listagem real (agora pode conter dados reais pós-upload), protegidos por JWT.
 - `GET /api/v1/analytics/*`, `POST /api/v1/assistant/chat`, `POST /api/v1/reports/*` → `501 Not Implemented` (esperado, contrato documentado).
 - `alembic upgrade head` / `alembic downgrade base` → cria/destrói schema completo (`users`, `uploads`, `transactions` + 4 enums Postgres).
-- `backend/.env.example` documenta todas as vars necessárias.
-- `backend/requirements.txt` sem dependências duplicadas (corrigido nesta sessão).
+- `pytest backend/tests/ -v` → **26/26 testes passando** (18 unit + 8 integração).
+- `backend/.env.example` documenta todas as vars necessárias; `requirements.txt` sem duplicatas.
 
 ---
 
 # O que ainda não funciona
 
-- **Upload de PDF real** — endpoint `POST /uploads/pdf` não existe; `extractor.py` e `categorizer.py` não estão integrados a nenhuma rota.
-- **Transactions API** — apenas `GET /` (list bruto, sem paginação/filtros/summary).
+- **Transactions API** — apenas `GET /` (list bruto, sem paginação/filtros/summary/update/delete).
 - **Analytics API** — todos os 7 endpoints são stubs `501` (incluindo `health-score`, que já tem lógica pronta em `services/analytics/health_score.py`, só não está conectada).
 - **Assistente IA** — stub `501`.
 - **Exportação PDF/Excel/CSV** — stubs `501`; faltam libs (`openpyxl`, `reportlab`/`weasyprint`).
-- **Frontend ↔ Backend** — Flutter não tem `core/network/`, login/dashboard continuam mockados.
+- **Frontend ↔ Backend** — Flutter não tem `core/network/`, login/dashboard continuam mockados; não há tela de upload no Flutter.
 - **Scaffold Flutter** — `flutter create .` nunca executado; `flutter run`/`build` falham.
-- **Categorizador ML** — `train()` nunca chamado, sem `categorizer.joblib`.
+- **Categorizador ML** — `train()` nunca chamado, sem `categorizer.joblib`; toda transação fora das regras de keyword fica `OTHER`/confidence `0.0`. Já está integrado ao upload (chamando `.categorize()`), só falta o treino.
+- **Parser Santander** — `_parse_santander_row` ainda é cópia de `_parse_itau_row` (placeholder).
+- **Fixtures de PDF reais** — `backend/tests/fixtures/` não existe; os 8 testes de integração do upload mockam `extract_transactions`, então o caminho real `_try_pdfplumber`/`_try_ocr` nunca foi exercitado por um PDF de verdade.
+- **SSE de progresso** — `POST /uploads/pdf` é síncrono (decisão deliberada do MVP); para faturas grandes/OCR pode valer a pena revisitar.
 - **PostgreSQL real** — Alembic só foi validado em SQLite + `--sql` offline para Postgres; nunca rodou contra um Postgres de verdade.
-- **Testes automatizados** — zero testes no projeto inteiro.
-- **3 módulos não importam no venv mínimo** (`services/ai/categorizer`, `services/analytics/health_score`, `services/pdf/extractor`) por faltar instalar `joblib`/`pandas`/`pdfplumber` — já estão em `requirements.txt`, é só rodar `pip install -r requirements.txt` completo.
+- **Testes para `categorizer.py`, `health_score.py`, `core/security.py`, repositories, rotas de auth** — ainda zero (extractor e upload agora cobertos).
+- **`prophet`/`nltk`** — em `requirements.txt`, não instalados; deferidos para Fase 3 (forecast/behavioral).
 
 ---
 
 # Próximo objetivo
 
-Conectar uma fatia vertical completa **ponta a ponta**: usuário se registra/loga pelo Flutter (via backend real) **e/ou** faz upload de um PDF da fatura Itaú que é processado, categorizado e salvo no banco — encerrando o ciclo "fundação pronta → primeira feature de valor real visível" (Fase 2 do roadmap em `docs/project_status.md` §15).
+Continuar a expansão do domínio backend ou conectar o frontend ao que já existe — em ambos os casos, fechando mais um ciclo "fundação → feature de valor visível" (Fase 3 do roadmap em `docs/project_status.md` §15).
 
 ---
 
 # Próximo módulo recomendado
 
-**Upload de PDF (backend)** — módulo que conecta `api/v1/routes/uploads.py` + `services/pdf/extractor.py` + `services/ai/categorizer.py` + `repositories/transaction_repository.py`.
+**Opção A (recomendada — continuidade natural): Transactions API completa**
 
-**Por quê este e não outro**: é o módulo que desbloqueia o maior número de features subsequentes — sem transações reais no banco, `transactions API`, `analytics` e o treino do categorizador ML ficam todos bloqueados ou trabalhando com dados sintéticos. Não depende do Flutter, então pode ser feito e validado isoladamente via `/api/docs`.
+`backend/app/api/v1/routes/transactions.py` + `repositories/transaction_repository.py`.
 
-**Alternativa igualmente válida**: `frontend/lib/core/network/` (network layer do Flutter) — desbloqueia a Fase 4 (frontend completo) mais cedo. Ver "Próxima tarefa recomendada" para os dois caminhos detalhados.
+**Por quê este e não outro**: agora que `POST /uploads/pdf` popula a tabela `transactions` com dados reais, o endpoint `GET /transactions/` (hoje um list bruto sem paginação/filtros) é o próximo gargalo óbvio — sem ele, não há como consultar/corrigir o que foi importado, e `/analytics/dashboard` (Fase 3) também depende de queries agregadas que hoje não existem no repository. É trabalho 100% backend, sem dependência do Flutter, e segue o mesmo padrão (`routes` → `repositories`) já validado nesta sessão.
 
----
+**Escopo sugerido**: paginação (`limit`/`offset` ou cursor), filtros (`date_from`/`date_to`, `category`, `type`), `GET /transactions/summary` (totais por categoria/período — possível reaproveitamento parcial de `health_score.py`), `PATCH /transactions/{id}` (correção manual de categoria pelo usuário — importante para retroalimentar o categorizador ML no futuro), `DELETE /transactions/{id}`.
 
-# Próxima tarefa recomendada
+**Alternativa igualmente válida (Opção B): Conectar Flutter ao backend**
 
-**Opção A (recomendada — maior valor imediato): Upload de PDF end-to-end**
-1. Criar `POST /api/v1/uploads/pdf` em `backend/app/api/v1/routes/uploads.py`:
-   - Recebe `UploadFile` (em memória, sem persistir em disco — requisito LGPD do CLAUDE.md)
-   - Cria registro `Upload` (status `PENDING` → `PROCESSING`)
-   - Chama `services/pdf/extractor.py` para extrair `RawTransaction[]`
-   - Chama `services/ai/categorizer.py` para categorizar cada transação
-   - Salva via `TransactionRepository.create()` (dedupe por `hash`)
-   - Atualiza `Upload.status` → `COMPLETED`/`FAILED`
-2. Antes de começar: completar o venv (`pip install -r requirements.txt`) para que `pdfplumber`, `joblib`, `pandas` etc. importem (ver "O que ainda não funciona").
-3. Testar com um PDF real de fatura Itaú (fixture em `backend/tests/fixtures/`, se existir, ou solicitar ao usuário).
+`frontend/lib/core/network/` (Dio + interceptor de refresh token) + telas de login/registro reais consumindo `/api/v1/auth/*`, e potencialmente uma tela simples de upload consumindo `POST /uploads/pdf` (já funcional). Desbloqueia a Fase 4 mais cedo e torna o produto utilizável por um humano de ponta a ponta. Requer `flutter create .` em algum momento — **pedir confirmação explícita ao usuário antes**, pois pode sobrescrever/mesclar arquivos existentes em `lib/`/`pubspec.yaml`/`assets/`.
 
-**Opção B (alternativa — desbloqueia o Flutter): `frontend/lib/core/network/`**
-1. Criar `Dio` client + interceptor de refresh token, consumindo `/api/v1/auth/*` (já funcional).
-2. Conectar `login_screen.dart` ao `/auth/login` real.
-3. Rodar `flutter create .` para gerar scaffold de plataforma (preservando `lib/`/`pubspec.yaml`/`assets/`) — confirmar com o usuário antes, pois pode sobrescrever/mesclar arquivos existentes.
-
-> Ambas são independentes e podem ser feitas em sessões separadas. A Opção A não depende do Flutter; a Opção B não depende do upload.
+> Ambas são independentes. A Opção A não depende do Flutter; a Opção B não depende da Transactions API (mas a tela de dashboard real, depois, vai precisar dela).
 
 ---
 
 # Ordem recomendada para desenvolvimento
 
-1. **Upload de PDF end-to-end** (Opção A) — gera dados reais de transações.
-2. **Transactions API completa** — paginação, filtros, summary, update (correção manual de categoria), delete.
-3. **Analytics API real** — começar por `/analytics/health-score` (lógica já pronta em `health_score.py`), depois `/analytics/dashboard`.
-4. **Conectar Flutter ao backend** (Opção B) — `core/network/`, login/dashboard reais, e só então `flutter create .`.
-5. **Categorizador ML** — treinar com dados reais (agora existentes via upload real do passo 1).
+1. ✅ ~~Upload de PDF end-to-end~~ — concluído (Fase 2).
+2. **Transactions API completa** (Opção A) — paginação, filtros, summary, update (correção manual de categoria), delete.
+3. **Conectar Flutter ao backend** (Opção B) — `core/network/`, login/dashboard/upload reais, e só então `flutter create .`.
+4. **Analytics API real** — começar por `/analytics/health-score` (lógica já pronta em `health_score.py`), depois `/analytics/dashboard`.
+5. **Categorizador ML** — treinar com dados reais (agora existentes via upload real).
 6. **Parser Santander real** — substituir o stub que hoje é cópia do parser Itaú.
-7. **Forecast (Prophet) + análise comportamental** — após volume real de transações.
-8. **Testes automatizados** — cobrir retroativamente `core/security.py`, repositories, rotas de auth, módulos puros (`extractor`, `categorizer`, `health_score`) e os módulos novos dos passos 1-7.
-9. **Validar Alembic contra PostgreSQL real** — antes do primeiro deploy.
-10. **Hardening de produção** — rate limiting/auth, CORS para produção, CI (`.github/workflows/`), exportações PDF/Excel/CSV, notificações, assistente IA.
+7. **Fixtures de PDF reais** — gerar/coletar PDFs de teste (Itaú/Santander) para `backend/tests/fixtures/`, testar `_try_pdfplumber`/`_try_ocr` ponta a ponta.
+8. **Forecast (Prophet) + análise comportamental** — após volume real de transações.
+9. **Testes automatizados restantes** — `core/security.py`, repositories, rotas de auth, `categorizer.py`, `health_score.py`.
+10. **Validar Alembic contra PostgreSQL real** — antes do primeiro deploy.
+11. **Hardening de produção** — rate limiting/auth, CORS para produção, CI (`.github/workflows/`), exportações PDF/Excel/CSV, notificações, assistente IA, SSE de progresso para upload.
 
-> Esta ordem corresponde às Fases 2–5 do roadmap em `docs/project_status.md` §15 ("Roadmap Atualizado").
+> Esta ordem corresponde às Fases 3–5 do roadmap em `docs/project_status.md` §15 ("Roadmap Atualizado").
 
 ---
 
 # Dependências para a próxima sessão
 
-- **Sem PostgreSQL local**: continuar usando SQLite (`sqlite+aiosqlite:///./<nome>.db`) via override de `DATABASE_URL` para smoke tests, OU subir um Postgres local (Docker: `docker run -e POSTGRES_PASSWORD=... -p 5432:5432 postgres:16`) para validar a migration contra o dialeto real.
-- `backend/venv/` já existe com dependências mínimas instaladas (fastapi, uvicorn, sqlalchemy, alembic, asyncpg, python-jose, passlib, bcrypt==4.0.1, pydantic, aiosqlite, etc.). Para a Opção A (PDF/OCR/ML), será necessário instalar adicionalmente: `pdfplumber`, `pymupdf`, `pytesseract`, `Pillow`, `pandas`, `scikit-learn`, `joblib` (já estão em `requirements.txt`, só não instalados no venv atual — confirmado nesta sessão via auditoria).
-- Para Opção B (Flutter): `flutter pub get` e depois `flutter create .` — confirmar com o usuário antes, pois `flutter create .` pode sobrescrever/mesclar arquivos existentes.
-- Se for testar OCR: `TESSERACT_CMD` precisa apontar para um Tesseract instalado no Windows.
+- `backend/venv/` já tem **todas** as deps de PDF/IA/teste instaladas (`pdfplumber`, `pymupdf`, `pytesseract`, `Pillow`, `pandas`, `numpy`, `scikit-learn`, `joblib`, `pytest`, `pytest-asyncio`, `pytest-cov`, `faker`, `httpx`, `aiosqlite`) — confirmado nesta sessão, 26/26 testes passando. `bcrypt==4.0.1` permanece intocado.
+- `prophet`/`nltk` ainda **não instalados** (não bloqueiam Opção A nem B) — instalar apenas quando a Fase 3 (forecast/behavioral) começar.
+- **Sem PostgreSQL local**: continuar usando SQLite (`sqlite+aiosqlite:///:memory:` para testes, ou `sqlite+aiosqlite:///./<nome>.db` para smoke test manual) via override de `DATABASE_URL`, OU subir um Postgres local (Docker: `docker run -e POSTGRES_PASSWORD=... -p 5432:5432 postgres:16`) para validar a migration contra o dialeto real.
+- Para Opção B (Flutter): `flutter pub get` e depois `flutter create .` — **confirmar com o usuário antes**, pois `flutter create .` pode sobrescrever/mesclar arquivos existentes.
+- Se for testar OCR real: `TESSERACT_CMD` precisa apontar para um Tesseract instalado no Windows.
 
 ---
 
@@ -122,14 +109,14 @@ Conectar uma fatia vertical completa **ponta a ponta**: usuário se registra/log
 | `CLAUDE_PROJECT_RULES.md` | Regras permanentes de governança (Arquitetura, Segurança, SaaS, Fintech, IA, Git, LGPD, etc.) — ler antes de qualquer decisão técnica |
 | `docs/session_start.md` | Procedimento obrigatório de início de sessão |
 | `docs/session_end.md` | Procedimento obrigatório de encerramento de sessão |
-| `backend/app/core/database.py` | Engine async, `Base`, `get_db()` — base de toda a camada de dados |
-| `backend/app/core/security.py` | JWT + hashing — entender antes de mexer em auth |
-| `backend/app/models/{user,upload,transaction}.py` | Schema atual — qualquer novo campo precisa de migration |
-| `backend/app/repositories/*.py` | Padrão de acesso a dados a seguir para novos repositórios |
-| `backend/app/api/v1/routes/uploads.py` | Ponto de entrada da Opção A (upload de PDF) |
-| `backend/app/services/pdf/extractor.py` | Pipeline de extração já pronto, aguardando integração |
-| `backend/app/services/ai/categorizer.py` | Categorizador já pronto, aguardando integração |
-| `backend/app/services/analytics/health_score.py` | Lógica pronta para `/analytics/health-score` |
+| `backend/app/api/v1/routes/uploads.py` | Endpoint `POST /pdf` real (Fase 2) — padrão de referência (validação → service → repository → estado explícito) para a Transactions API |
+| `backend/app/repositories/transaction_repository.py` | Ponto de entrada da Opção A — hoje só tem `create`/`get_by_hash`/`list_by_user`; precisa de paginação/filtros/summary/update/delete |
+| `backend/app/services/pdf/extractor.py` | Pipeline de extração, agora operando em `bytes`/`BytesIO` (100% memória, LGPD) |
+| `backend/app/services/ai/categorizer.py` | Categorizador integrado ao upload; aguardando treino real (`train()`) |
+| `backend/app/services/analytics/health_score.py` | Lógica pronta para `/analytics/health-score` (Fase 3, item 4) |
+| `backend/tests/conftest.py` | Fixtures de teste (`db_session`, `client`, `test_user`, `auth_headers`) — reusar para novos testes (Transactions API, etc.) |
+| `backend/tests/integration/test_uploads.py` | Padrão de referência para testes de integração com `AsyncClient` + `monkeypatch` |
+| `backend/app/core/config.py` | `Settings` — `MAX_UPLOAD_SIZE_MB`, `SUPPORTED_BANKS` (novos nesta sessão) |
 | `backend/alembic/versions/7132eab5146a_initial_schema.py` | Migration inicial — qualquer mudança de schema gera nova revision a partir desta |
 | `docs/project_status.md` | Status completo — "Visão Geral por Área", §15 "Roadmap Atualizado", e seções "Sessão Anterior"/"Última Sessão" com todo o histórico |
 
@@ -139,9 +126,12 @@ Conectar uma fatia vertical completa **ponta a ponta**: usuário se registra/log
 
 - **Migration nunca testada em PostgreSQL real** — validar no primeiro ambiente com Postgres disponível antes de confiar 100%.
 - **`bcrypt` deve permanecer pinado em `4.0.1`** — `passlib==1.7.4` é incompatível com `bcrypt>=4.1` (quebra hashing de senha com `500`). Não atualizar `bcrypt` sem também atualizar/substituir `passlib`.
-- **Zero testes automatizados** — qualquer refator na fundação criada na Fase 1 não tem rede de segurança.
-- **`backend/venv/` é local e não versionado** — uma nova sessão/máquina precisa recriar (`python -m venv venv && pip install -r requirements.txt`); `bcrypt==4.0.1` e o restante já estão no `requirements.txt`, mas o venv mínimo atual não tem `pdfplumber`/`pandas`/`joblib` instalados (ver "Dependências para a próxima sessão").
+- **Cobertura de testes ainda pontual** — extractor e upload têm 26 testes, mas `core/security.py`, `categorizer.py`, `health_score.py`, repositories e rotas de auth seguem sem rede de segurança.
+- **`backend/venv/` é local e não versionado** — uma nova sessão/máquina precisa recriar (`python -m venv venv && pip install -r requirements.txt`); todas as deps (exceto `prophet`/`nltk`) já confirmadas funcionando nesta sessão.
 - **Frontend sem scaffold de plataforma** — qualquer tentativa de `flutter run`/`build` falhará até `flutter create .` ser executado.
+- 🆕 **Dedupe de transações via `transactions.hash` (unique global, não escopado por `user_id`)** — dois usuários que importem uma linha byte-idêntica colidiriam no hash; a segunda seria tratada como duplicata silenciosamente. Mecanismo oficial (regra Fintech #3), definido na migration inicial — mudança exigiria nova migration + decisão explícita. Risco baixo na prática.
+- 🆕 **`TransactionRepository.create()` comita uma transação por vez** — para faturas com muitas linhas, `POST /uploads/pdf` faz N commits sequenciais. Aceitável para volumes típicos (10–100 linhas); revisar para bulk-insert apenas se virar gargalo real (não otimizar prematuramente).
+- 🆕 **Caminho OCR (`_try_ocr`/Tesseract) e `_try_pdfplumber` nunca exercitados por PDF real** — os 8 testes de integração mockam `extract_transactions`; um PDF real malformado/diferente do esperado pode se comportar diferente do previsto até existirem fixtures reais.
 
 ---
 
@@ -151,8 +141,14 @@ Conectar uma fatia vertical completa **ponta a ponta**: usuário se registra/log
 2. **FK `uploads.id` → `ON DELETE SET NULL`** em `transactions.upload_id` — preserva o histórico de transações mesmo que o registro de upload seja apagado.
 3. **JWT com claim `"type"`** (`"access"` | `"refresh"`) no mesmo `SECRET_KEY` — distingue os dois tipos de token sem precisar de chaves separadas; `/refresh` rejeita explicitamente um access token.
 4. **Schema é responsabilidade exclusiva do Alembic** — removido `Base.metadata.create_all` do lifespan do FastAPI; em dev/test, rodar `alembic upgrade head` antes de subir o servidor.
-5. **Pacotes Python explícitos** (`__init__.py` em todos os subpacotes de `app/`) — decisão deliberada para evitar ambiguidades de namespace package, especialmente relevante para o `target_metadata` do Alembic (`from app import models`).
-6. **Índices adicionados** em `transactions.user_id`, `transactions.upload_id`, `transactions.date`, `transactions.category`, `uploads.user_id`, `users.email` — antecipando os padrões de query do dashboard/analytics (filtro por usuário + período + categoria).
-7. **Migration inicial usa `postgresql.UUID`/`postgresql.ENUM` explicitamente** (não autogenerate) — `op.create_table()` cria os tipos ENUM automaticamente via eventos DDL do SQLAlchemy; `downgrade()` dropa os 4 enums explicitamente para evitar tipos órfãos no Postgres.
+5. **Pacotes Python explícitos** (`__init__.py` em todos os subpacotes de `app/`) — evita ambiguidades de namespace package, especialmente para o `target_metadata` do Alembic.
+6. **Índices** em `transactions.user_id`, `transactions.upload_id`, `transactions.date`, `transactions.category`, `uploads.user_id`, `users.email` — antecipando os padrões de query do dashboard/analytics.
+7. **Migration inicial usa `postgresql.UUID`/`postgresql.ENUM` explicitamente** (não autogenerate) — `downgrade()` dropa os 4 enums explicitamente para evitar tipos órfãos no Postgres.
 8. **`bcrypt==4.0.1` pinado** — necessário para compatibilidade com `passlib==1.7.4` (ver "Riscos conhecidos").
-9. **Governança formalizada** (Fase 1.5): `CLAUDE_PROJECT_RULES.md` define regras permanentes; `docs/session_start.md`/`docs/session_end.md` definem o procedimento obrigatório de toda sessão. Mudanças nessas regras devem ser raras, deliberadas e sinalizadas explicitamente ao usuário (regra 13.4 de `CLAUDE_PROJECT_RULES.md`) — não corrigidas silenciosamente em sessões futuras.
+9. **Governança formalizada** (Fase 1.5): `CLAUDE_PROJECT_RULES.md` define regras permanentes; `docs/session_start.md`/`docs/session_end.md` definem o procedimento obrigatório de toda sessão. Mudanças nessas regras devem ser raras, deliberadas e sinalizadas explicitamente (regra 13.4).
+10. 🆕 **`extract_transactions` opera em `bytes`/`BytesIO`/`fitz.open(stream=...)`**, nunca em caminho de arquivo — requisito LGPD (PDF nunca tocado em disco), decisão da Fase 2.
+11. 🆕 **`UploadResult(UploadRead)`** como schema de resposta dedicado de `POST /uploads/pdf` (em vez de estender `UploadRead` diretamente) — mantém `GET /uploads/` com o schema original e adiciona `transactions_created`/`duplicates_skipped` só onde fazem sentido.
+12. 🆕 **Validação de banco via `Settings.SUPPORTED_BANKS`** (`["itau", "santander"]`) — alinhado ao passo 3 de "Adding a New Bank Parser" no `CLAUDE.md`; novo banco = adicionar à lista + criar `_parse_<bank>_row`.
+13. 🆕 **Estado `FAILED` (com `error_message` amigável) em vez de erro HTTP genérico** para "zero transações extraídas" ou "exceção durante extração" — `Upload` funciona como trilha de auditoria; resposta sempre `201`, detalhes internos da exceção nunca expostos (regra 7.4 — estado explícito).
+14. 🆕 **MVP síncrono para `POST /uploads/pdf` (sem SSE)** — decisão da sessão anterior, mantida; SSE de progresso é follow-up explícito (ver "O que ainda não funciona").
+15. 🆕 **Testes de integração do upload mockam `extract_transactions`** via `monkeypatch` em vez de usar PDFs reais — fixtures reais ficam como débito explícito (ver "Riscos conhecidos" / item 7 da "Ordem recomendada").
