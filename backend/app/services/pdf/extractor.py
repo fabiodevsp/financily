@@ -2,12 +2,14 @@
 PDF extraction pipeline:
   1. pdfplumber (table-based banks)
   2. PyMuPDF + Tesseract OCR (image-based / scanned PDFs)
+
+Operates entirely in memory (bytes in, never written to disk) per LGPD requirements.
 """
 import hashlib
 import re
 from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
+from io import BytesIO
 from typing import Optional
 
 import pdfplumber
@@ -30,19 +32,19 @@ class RawTransaction:
     hash: str
 
 
-def extract_transactions(pdf_path: Path, bank: str) -> list[RawTransaction]:
+def extract_transactions(pdf_bytes: bytes, bank: str) -> list[RawTransaction]:
     """Entry point: tries pdfplumber first, falls back to OCR."""
-    results = _try_pdfplumber(pdf_path, bank)
+    results = _try_pdfplumber(pdf_bytes, bank)
     if not results:
-        results = _try_ocr(pdf_path, bank)
+        results = _try_ocr(pdf_bytes, bank)
     return _deduplicate(results)
 
 
 # ── pdfplumber path ─────────────────────────────────────────────────────────
 
-def _try_pdfplumber(pdf_path: Path, bank: str) -> list[RawTransaction]:
+def _try_pdfplumber(pdf_bytes: bytes, bank: str) -> list[RawTransaction]:
     transactions = []
-    with pdfplumber.open(pdf_path) as pdf:
+    with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
         for page in pdf.pages:
             tables = page.extract_tables()
             for table in tables:
@@ -91,9 +93,9 @@ def _parse_santander_row(row: list) -> Optional[RawTransaction]:
 
 # ── OCR path ────────────────────────────────────────────────────────────────
 
-def _try_ocr(pdf_path: Path, bank: str) -> list[RawTransaction]:
+def _try_ocr(pdf_bytes: bytes, bank: str) -> list[RawTransaction]:
     transactions = []
-    doc = fitz.open(str(pdf_path))
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     for page in doc:
         pix  = page.get_pixmap(dpi=300)
         img  = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)

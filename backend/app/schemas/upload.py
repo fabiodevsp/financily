@@ -17,3 +17,10 @@ class UploadRead(BaseModel):
     error_message: Optional[str] = None
     processed_at: Optional[datetime] = None
     created_at: datetime
+
+
+class UploadResult(UploadRead):
+    """Response of POST /uploads/pdf — adds processing counters to UploadRead."""
+
+    transactions_created: int
+    duplicates_skipped: int

@@ -16,6 +16,9 @@ class Settings(BaseSettings):
 
     TESSERACT_CMD: str = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
+    MAX_UPLOAD_SIZE_MB: int = 10
+    SUPPORTED_BANKS: List[str] = ["itau", "santander"]
+
     class Config:
         env_file = ".env"
 
