@@ -20,6 +20,7 @@ dependencies:
   # Network
   dio: ^5.4.3
   retrofit: ^4.1.0
+  http_parser: ^4.0.2
 
   # Storage
   flutter_secure_storage: ^9.0.0

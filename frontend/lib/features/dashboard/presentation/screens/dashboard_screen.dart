@@ -2,6 +2,35 @@ import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
+
+import '../../../../core/network/api_exception.dart';
+import '../../../auth/presentation/providers/auth_provider.dart';
+import '../../../transactions/data/models/transaction_model.dart';
+import '../../../transactions/data/models/transaction_summary_model.dart';
+import '../../../transactions/presentation/providers/transactions_provider.dart';
+import '../../../transactions/presentation/widgets/category_ui.dart';
+
+final _currencyFormat = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
+
+String _greeting() {
+  final hour = DateTime.now().hour;
+  if (hour < 12) return 'Bom dia';
+  if (hour < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
+String _relativeDate(DateTime date) {
+  final now = DateTime.now();
+  if (date.year == now.year && date.month == now.month && date.day == now.day) return 'Hoje';
+  final d = date.day.toString().padLeft(2, '0');
+  final m = date.month.toString().padLeft(2, '0');
+  return '$d/$m';
+}
+
+String _errorMessage(Object error) => error is ApiException ? error.message : 'Não foi possível carregar os dados.';
 
 // ─────────────────────────────────────────────
 //  DESIGN TOKENS
@@ -31,42 +60,15 @@ class _Grad {
 }
 
 // ─────────────────────────────────────────────
-//  MOCK DATA
-// ─────────────────────────────────────────────
-class _MockTransaction {
-  final String merchant, category;
-  final double amount;
-  final bool isIncome;
-  final IconData icon;
-  final Color color;
-  const _MockTransaction({
-    required this.merchant,
-    required this.category,
-    required this.amount,
-    required this.isIncome,
-    required this.icon,
-    required this.color,
-  });
-}
-
-final _transactions = [
-  _MockTransaction(merchant: 'iFood', category: 'Alimentação', amount: 89.90, isIncome: false, icon: Icons.restaurant_rounded, color: _C.amber),
-  _MockTransaction(merchant: 'Salário', category: 'Receita', amount: 8500.00, isIncome: true, icon: Icons.account_balance_rounded, color: _C.income),
-  _MockTransaction(merchant: 'Spotify', category: 'Assinatura', amount: 21.90, isIncome: false, icon: Icons.music_note_rounded, color: _C.purple),
-  _MockTransaction(merchant: 'Uber', category: 'Transporte', amount: 34.50, isIncome: false, icon: Icons.directions_car_rounded, color: _C.cyan),
-  _MockTransaction(merchant: 'Netflix', category: 'Assinatura', amount: 45.90, isIncome: false, icon: Icons.play_circle_rounded, color: _C.expense),
-];
-
-// ─────────────────────────────────────────────
 //  DASHBOARD SCREEN
 // ─────────────────────────────────────────────
-class DashboardScreen extends StatefulWidget {
+class DashboardScreen extends ConsumerStatefulWidget {
   const DashboardScreen({super.key});
   @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
+  ConsumerState<DashboardScreen> createState() => _DashboardScreenState();
 }
 
-class _DashboardScreenState extends State<DashboardScreen>
+class _DashboardScreenState extends ConsumerState<DashboardScreen>
     with TickerProviderStateMixin {
   late AnimationController _entryCtrl;
   late AnimationController _scoreCtrl;
@@ -123,33 +125,43 @@ class _DashboardScreenState extends State<DashboardScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _C.bg,
-      body: CustomScrollView(
-        physics: const BouncingScrollPhysics(),
-        slivers: [
-          _buildAppBar(),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                _animated(0, const _BalanceSummaryCard()),
-                const SizedBox(height: 20),
-                _animated(1, _FinancialHealthScoreCard(animation: _scoreAnim)),
-                const SizedBox(height: 20),
-                _animated(2, const _SpendingHeatmapWidget()),
-                const SizedBox(height: 20),
-                _animated(3, const _CategoryPieWidget()),
-                const SizedBox(height: 20),
-                _animated(4, const _RecentTransactionsCard()),
-              ]),
+      body: RefreshIndicator(
+        color: _C.cyan,
+        backgroundColor: _C.surface,
+        onRefresh: () => Future.wait([
+          ref.refresh(transactionsProvider.future),
+          ref.refresh(transactionsSummaryProvider.future),
+        ]),
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            _buildAppBar(),
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+              sliver: SliverList(
+                delegate: SliverChildListDelegate([
+                  _animated(0, const _BalanceSummaryCard()),
+                  const SizedBox(height: 20),
+                  _animated(1, _FinancialHealthScoreCard(animation: _scoreAnim)),
+                  const SizedBox(height: 20),
+                  _animated(2, const _SpendingHeatmapWidget()),
+                  const SizedBox(height: 20),
+                  _animated(3, const _CategoryPieWidget()),
+                  const SizedBox(height: 20),
+                  _animated(4, const _RecentTransactionsCard()),
+                ]),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-      bottomNavigationBar: _buildBottomNav(),
+      bottomNavigationBar: _buildBottomNav(context),
     );
   }
 
-  SliverAppBar _buildAppBar() => SliverAppBar(
+  SliverAppBar _buildAppBar() {
+    final user = ref.watch(authControllerProvider).user;
+    return SliverAppBar(
     backgroundColor: _C.bg,
     expandedHeight: 100,
     pinned: true,
@@ -172,7 +184,7 @@ class _DashboardScreenState extends State<DashboardScreen>
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Bom dia, Fabio', style: TextStyle(color: _C.muted, fontSize: 12, fontWeight: FontWeight.w400)),
+              Text('${_greeting()}, ${user?.displayName ?? ''}', style: TextStyle(color: _C.muted, fontSize: 12, fontWeight: FontWeight.w400)),
               Text('Financily', style: TextStyle(
                 color: _C.white,
                 fontSize: 22,
@@ -200,34 +212,86 @@ class _DashboardScreenState extends State<DashboardScreen>
       ),
     ),
   );
+  }
 
-  Widget _buildBottomNav() => Container(
+  Widget _buildBottomNav(BuildContext context) => Container(
     height: 72,
     decoration: BoxDecoration(
       color: _C.surface,
       border: Border(top: BorderSide(color: _C.border, width: 0.5)),
     ),
     child: Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _BottomNavItem(icon: Icons.dashboard_rounded, label: 'Dashboard', active: true),
-        _BottomNavItem(icon: Icons.upload_file_rounded, label: 'Upload'),
-        _BottomNavItem(icon: Icons.auto_graph_rounded, label: 'Analytics'),
-        _BottomNavItem(icon: Icons.smart_toy_rounded, label: 'AI Chat'),
-        _BottomNavItem(icon: Icons.settings_rounded, label: 'Config'),
+        _BottomNavItem(icon: Icons.dashboard_rounded, label: 'Dashboard', active: true, onTap: () {}),
+        _BottomNavItem(icon: Icons.upload_file_rounded, label: 'Upload', onTap: () => context.push('/upload')),
+        _BottomNavItem(icon: Icons.auto_graph_rounded, label: 'Analytics', onTap: () => _showComingSoon(context)),
+        _BottomNavItem(icon: Icons.smart_toy_rounded, label: 'AI Chat', onTap: () => _showComingSoon(context)),
+        _BottomNavItem(icon: Icons.settings_rounded, label: 'Config', onTap: () => _showConfigSheet(context)),
       ],
     ),
   );
+
+  void _showComingSoon(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Em breve.'), backgroundColor: _C.card),
+    );
+  }
+
+  void _showConfigSheet(BuildContext context) {
+    final user = ref.read(authControllerProvider).user;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _C.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(user?.email ?? '', style: const TextStyle(color: _C.white, fontWeight: FontWeight.w700, fontSize: 15)),
+              const SizedBox(height: 4),
+              Text(
+                user?.subscriptionTier == 'free' ? 'Plano gratuito' : (user?.subscriptionTier ?? ''),
+                style: const TextStyle(color: _C.muted, fontSize: 12),
+              ),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.of(sheetContext).pop();
+                    ref.read(authControllerProvider.notifier).logout();
+                  },
+                  icon: const Icon(Icons.logout_rounded, color: _C.expense),
+                  label: const Text('Sair', style: TextStyle(color: _C.expense)),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: _C.expense),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────
 //  BALANCE SUMMARY CARD
 // ─────────────────────────────────────────────
-class _BalanceSummaryCard extends StatelessWidget {
+class _BalanceSummaryCard extends ConsumerWidget {
   const _BalanceSummaryCard();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final summaryAsync = ref.watch(transactionsSummaryProvider);
+
     return _GlassCard(
       gradient: const LinearGradient(
         begin: Alignment.topLeft,
@@ -241,7 +305,7 @@ class _BalanceSummaryCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Resumo — Maio 2026',
+              Text('Resumo Geral',
                 style: TextStyle(color: _C.muted, fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: 0.5)),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -255,36 +319,56 @@ class _BalanceSummaryCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-          Center(
-            child: Column(
-              children: [
-                Text('Saldo Atual', style: TextStyle(color: _C.muted, fontSize: 12)),
-                const SizedBox(height: 4),
-                ShaderMask(
-                  shaderCallback: (r) => const LinearGradient(colors: _Grad.cyanBlue).createShader(r),
-                  child: const Text('R\$ 3.847,20',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 38,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: -1,
-                    )),
-                ),
-              ],
+          summaryAsync.when(
+            data: (summary) => _buildContent(summary),
+            loading: () => const SizedBox(
+              height: 168,
+              child: Center(child: CircularProgressIndicator(color: _C.cyan)),
             ),
-          ),
-          const SizedBox(height: 24),
-          Container(height: 0.5, color: _C.border),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(child: _BalancePill(label: 'Receitas', value: 'R\$ 8.500', colors: _Grad.incomeG, icon: Icons.arrow_upward_rounded)),
-              Container(width: 0.5, height: 40, color: _C.border),
-              Expanded(child: _BalancePill(label: 'Despesas', value: 'R\$ 4.652', colors: _Grad.expenseG, icon: Icons.arrow_downward_rounded)),
-            ],
+            error: (error, _) => SizedBox(
+              height: 168,
+              child: Center(
+                child: Text(_errorMessage(error), textAlign: TextAlign.center, style: const TextStyle(color: _C.muted, fontSize: 13)),
+              ),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildContent(TransactionSummaryModel summary) {
+    return Column(
+      children: [
+        Center(
+          child: Column(
+            children: [
+              Text('Saldo Atual', style: TextStyle(color: _C.muted, fontSize: 12)),
+              const SizedBox(height: 4),
+              ShaderMask(
+                shaderCallback: (r) => const LinearGradient(colors: _Grad.cyanBlue).createShader(r),
+                child: Text(_currencyFormat.format(summary.balance),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 38,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -1,
+                  )),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        Container(height: 0.5, color: _C.border),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(child: _BalancePill(label: 'Receitas', value: _currencyFormat.format(summary.totalIncome), colors: _Grad.incomeG, icon: Icons.arrow_upward_rounded)),
+            Container(width: 0.5, height: 40, color: _C.border),
+            Expanded(child: _BalancePill(label: 'Despesas', value: _currencyFormat.format(summary.totalExpenses), colors: _Grad.expenseG, icon: Icons.arrow_downward_rounded)),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -582,25 +666,41 @@ class _HeatCell extends StatelessWidget {
 // ─────────────────────────────────────────────
 //  CATEGORY PIE WIDGET (FL Chart substituted with custom painter)
 // ─────────────────────────────────────────────
-class _CategoryPieWidget extends StatefulWidget {
-  const _CategoryPieWidget();
-  @override
-  State<_CategoryPieWidget> createState() => _CategoryPieWidgetState();
+/// Agrupa o top-5 de [byCategory] por valor absoluto e soma o restante em
+/// "Outros", retornando frações (0–1) prontas para o [_PiePainter].
+List<(String, double, Color)> _buildPieCategories(List<CategorySummaryModel> byCategory) {
+  if (byCategory.isEmpty) return [];
+  final sorted = [...byCategory]..sort((a, b) => b.total.abs().compareTo(a.total.abs()));
+  final totalAbs = sorted.fold<double>(0, (sum, c) => sum + c.total.abs());
+  if (totalAbs == 0) return [];
+
+  const maxSlices = 5;
+  final top = sorted.take(maxSlices);
+  final restTotal = sorted.skip(maxSlices).fold<double>(0, (sum, c) => sum + c.total.abs());
+
+  final result = top.map((c) {
+    final ui = categoryUiFor(c.category);
+    return (ui.label, c.total.abs() / totalAbs, ui.color);
+  }).toList();
+
+  if (restTotal > 0) {
+    result.add(('Outros', restTotal / totalAbs, _C.muted));
+  }
+
+  return result;
 }
 
-class _CategoryPieWidgetState extends State<_CategoryPieWidget>
+class _CategoryPieWidget extends ConsumerStatefulWidget {
+  const _CategoryPieWidget();
+  @override
+  ConsumerState<_CategoryPieWidget> createState() => _CategoryPieWidgetState();
+}
+
+class _CategoryPieWidgetState extends ConsumerState<_CategoryPieWidget>
     with SingleTickerProviderStateMixin {
   late AnimationController _ctrl;
   late Animation<double> _anim;
   int _selected = -1;
-
-  static const _categories = [
-    ('Alimentação', 0.32, _C.amber),
-    ('Assinaturas', 0.18, _C.purple),
-    ('Transporte', 0.14, _C.cyan),
-    ('Saúde', 0.10, _C.income),
-    ('Outros', 0.26, Color(0xFF4A5568)),
-  ];
 
   @override
   void initState() {
@@ -615,6 +715,8 @@ class _CategoryPieWidgetState extends State<_CategoryPieWidget>
 
   @override
   Widget build(BuildContext context) {
+    final summaryAsync = ref.watch(transactionsSummaryProvider);
+
     return _GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -622,56 +724,78 @@ class _CategoryPieWidgetState extends State<_CategoryPieWidget>
           Text('Distribuição por Categoria',
             style: TextStyle(color: _C.muted, fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: 0.5)),
           const SizedBox(height: 20),
-          Row(
-            children: [
-              SizedBox(
-                width: 140, height: 140,
-                child: AnimatedBuilder(
-                  animation: _anim,
-                  builder: (_, __) => CustomPaint(
-                    painter: _PiePainter(
-                      categories: _categories,
-                      progress: _anim.value,
-                      selected: _selected,
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 20),
-              Expanded(
-                child: Column(
-                  children: List.generate(_categories.length, (i) {
-                    final c = _categories[i];
-                    return GestureDetector(
-                      onTap: () => setState(() => _selected = _selected == i ? -1 : i),
-                      child: Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                        decoration: BoxDecoration(
-                          color: _selected == i ? c.$3.withOpacity(0.15) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                            color: _selected == i ? c.$3.withOpacity(0.5) : Colors.transparent,
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(width: 10, height: 10, decoration: BoxDecoration(color: c.$3, shape: BoxShape.circle)),
-                            const SizedBox(width: 8),
-                            Expanded(child: Text(c.$1, style: const TextStyle(color: _C.white, fontSize: 12))),
-                            Text('${(c.$2 * 100).round()}%',
-                              style: TextStyle(color: c.$3, fontSize: 12, fontWeight: FontWeight.w700)),
-                          ],
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-              ),
-            ],
+          summaryAsync.when(
+            data: _buildContent,
+            loading: () => const SizedBox(height: 140, child: Center(child: CircularProgressIndicator(color: _C.cyan))),
+            error: (error, _) => SizedBox(
+              height: 140,
+              child: Center(child: Text(_errorMessage(error), style: const TextStyle(color: _C.muted, fontSize: 13))),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildContent(TransactionSummaryModel summary) {
+    final categories = _buildPieCategories(summary.byCategory);
+    if (categories.isEmpty) {
+      return const SizedBox(
+        height: 140,
+        child: Center(child: Text('Sem dados categorizados ainda.', style: TextStyle(color: _C.muted, fontSize: 13))),
+      );
+    }
+
+    final totalAbs = summary.byCategory.fold<double>(0, (sum, c) => sum + c.total.abs());
+
+    return Row(
+      children: [
+        SizedBox(
+          width: 140, height: 140,
+          child: AnimatedBuilder(
+            animation: _anim,
+            builder: (_, __) => CustomPaint(
+              painter: _PiePainter(
+                categories: categories,
+                progress: _anim.value,
+                selected: _selected,
+                centerLabel: _currencyFormat.format(totalAbs),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 20),
+        Expanded(
+          child: Column(
+            children: List.generate(categories.length, (i) {
+              final c = categories[i];
+              return GestureDetector(
+                onTap: () => setState(() => _selected = _selected == i ? -1 : i),
+                child: Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: _selected == i ? c.$3.withOpacity(0.15) : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: _selected == i ? c.$3.withOpacity(0.5) : Colors.transparent,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(width: 10, height: 10, decoration: BoxDecoration(color: c.$3, shape: BoxShape.circle)),
+                      const SizedBox(width: 8),
+                      Expanded(child: Text(c.$1, style: const TextStyle(color: _C.white, fontSize: 12))),
+                      Text('${(c.$2 * 100).round()}%',
+                        style: TextStyle(color: c.$3, fontSize: 12, fontWeight: FontWeight.w700)),
+                    ],
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -680,7 +804,8 @@ class _PiePainter extends CustomPainter {
   final List<(String, double, Color)> categories;
   final double progress;
   final int selected;
-  const _PiePainter({required this.categories, required this.progress, required this.selected});
+  final String centerLabel;
+  const _PiePainter({required this.categories, required this.progress, required this.selected, required this.centerLabel});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -729,10 +854,10 @@ class _PiePainter extends CustomPainter {
 
     // Center label
     final tp = TextPainter(
-      text: const TextSpan(
+      text: TextSpan(
         children: [
-          TextSpan(text: 'R\$ 4.652\n', style: TextStyle(color: _C.white, fontSize: 13, fontWeight: FontWeight.w800)),
-          TextSpan(text: 'total', style: TextStyle(color: _C.muted, fontSize: 10)),
+          TextSpan(text: '$centerLabel\n', style: const TextStyle(color: _C.white, fontSize: 13, fontWeight: FontWeight.w800)),
+          const TextSpan(text: 'total', style: TextStyle(color: _C.muted, fontSize: 10)),
         ],
       ),
       textAlign: TextAlign.center,
@@ -742,17 +867,20 @@ class _PiePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_PiePainter old) => old.progress != progress || old.selected != selected;
+  bool shouldRepaint(_PiePainter old) =>
+      old.progress != progress || old.selected != selected || old.centerLabel != centerLabel;
 }
 
 // ─────────────────────────────────────────────
 //  RECENT TRANSACTIONS CARD
 // ─────────────────────────────────────────────
-class _RecentTransactionsCard extends StatelessWidget {
+class _RecentTransactionsCard extends ConsumerWidget {
   const _RecentTransactionsCard();
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final transactionsAsync = ref.watch(transactionsProvider);
+
     return _GlassCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -763,17 +891,37 @@ class _RecentTransactionsCard extends StatelessWidget {
               Text('Últimas Transações',
                 style: TextStyle(color: _C.muted, fontSize: 12, fontWeight: FontWeight.w500, letterSpacing: 0.5)),
               TextButton(
-                onPressed: () {},
+                onPressed: () => context.push('/transactions'),
                 style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size.zero),
                 child: Text('Ver todas', style: TextStyle(color: _C.cyan, fontSize: 12)),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          ..._transactions.asMap().entries.map((entry) => _RecentTransactionsTile(
-            tx: entry.value,
-            isLast: entry.key == _transactions.length - 1,
-          )),
+          transactionsAsync.when(
+            data: (list) {
+              if (list.items.isEmpty) {
+                return const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Text('Nenhuma transação ainda.', style: TextStyle(color: _C.muted, fontSize: 13)),
+                  ),
+                );
+              }
+              final recent = list.items.take(5).toList();
+              return Column(
+                children: recent.asMap().entries.map((entry) => _RecentTransactionsTile(
+                  tx: entry.value,
+                  isLast: entry.key == recent.length - 1,
+                )).toList(),
+              );
+            },
+            loading: () => const SizedBox(height: 80, child: Center(child: CircularProgressIndicator(color: _C.cyan))),
+            error: (error, _) => SizedBox(
+              height: 80,
+              child: Center(child: Text(_errorMessage(error), style: const TextStyle(color: _C.muted, fontSize: 13))),
+            ),
+          ),
         ],
       ),
     );
@@ -781,12 +929,15 @@ class _RecentTransactionsCard extends StatelessWidget {
 }
 
 class _RecentTransactionsTile extends StatelessWidget {
-  final _MockTransaction tx;
+  final TransactionModel tx;
   final bool isLast;
   const _RecentTransactionsTile({required this.tx, this.isLast = false});
 
   @override
   Widget build(BuildContext context) {
+    final categoryUi = categoryUiFor(tx.category);
+    final isCredit = tx.isCredit;
+
     return Column(
       children: [
         Padding(
@@ -796,20 +947,22 @@ class _RecentTransactionsTile extends StatelessWidget {
               Container(
                 width: 42, height: 42,
                 decoration: BoxDecoration(
-                  color: tx.color.withOpacity(0.12),
+                  color: categoryUi.color.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: tx.color.withOpacity(0.25)),
+                  border: Border.all(color: categoryUi.color.withOpacity(0.25)),
                 ),
-                child: Icon(tx.icon, color: tx.color, size: 20),
+                child: Icon(categoryUi.icon, color: categoryUi.color, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(tx.merchant,
+                    Text(tx.description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                       style: const TextStyle(color: _C.white, fontSize: 14, fontWeight: FontWeight.w600)),
-                    Text(tx.category,
+                    Text(categoryUi.label,
                       style: TextStyle(color: _C.muted, fontSize: 12)),
                   ],
                 ),
@@ -818,14 +971,14 @@ class _RecentTransactionsTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '${tx.isIncome ? '+' : '-'} R\$ ${tx.amount.toStringAsFixed(2)}',
+                    '${isCredit ? '+' : '-'} ${_currencyFormat.format(tx.amount.abs())}',
                     style: TextStyle(
-                      color: tx.isIncome ? _C.income : _C.expense,
+                      color: isCredit ? _C.income : _C.expense,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  Text('Hoje', style: TextStyle(color: _C.muted, fontSize: 11)),
+                  Text(_relativeDate(tx.date), style: TextStyle(color: _C.muted, fontSize: 11)),
                 ],
               ),
             ],
@@ -924,21 +1077,27 @@ class _BottomNavItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool active;
-  const _BottomNavItem({required this.icon, required this.label, this.active = false});
+  final VoidCallback? onTap;
+  const _BottomNavItem({required this.icon, required this.label, this.active = false, this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, color: active ? _C.cyan : _C.muted, size: 22),
-        const SizedBox(height: 4),
-        Text(label, style: TextStyle(color: active ? _C.cyan : _C.muted, fontSize: 10, fontWeight: active ? FontWeight.w700 : FontWeight.w400)),
-        if (active) ...[
-          const SizedBox(height: 4),
-          Container(width: 16, height: 2, decoration: BoxDecoration(color: _C.cyan, borderRadius: BorderRadius.circular(1))),
-        ],
-      ],
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: active ? _C.cyan : _C.muted, size: 22),
+            const SizedBox(height: 4),
+            Text(label, style: TextStyle(color: active ? _C.cyan : _C.muted, fontSize: 10, fontWeight: active ? FontWeight.w700 : FontWeight.w400)),
+            if (active) ...[
+              const SizedBox(height: 4),
+              Container(width: 16, height: 2, decoration: BoxDecoration(color: _C.cyan, borderRadius: BorderRadius.circular(1))),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
