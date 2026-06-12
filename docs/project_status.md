@@ -1,7 +1,7 @@
 # Financily — Status do Projeto
 
 > Auditoria técnica completa. Última atualização: 2026-06-12.
-> Branch: `master` · Commits: `2639e79` (arquitetura inicial) → `6782076` (preview HTML + docs) → `1fb4c96` (auditoria) → `4142824` (fundação do backend) → `f8d9b78`/`f7dd82c` (governança) → **Upload de PDF end-to-end (esta sessão, commit pendente)**
+> Branch: `master` · Commits: `2639e79` (arquitetura inicial) → `6782076` (preview HTML + docs) → `1fb4c96` (auditoria) → `4142824` (fundação do backend) → `f8d9b78`/`f7dd82c` (governança) → `1c362f2`/`3ae52b5` (upload de PDF end-to-end) → **Transactions API completa (esta sessão, commit pendente)**
 
 ---
 
@@ -9,17 +9,18 @@
 
 | Área | Status | Detalhe |
 |---|---|---|
-| **Backend** | ✅ Funcional — FastAPI sobe sem erros, 21 rotas registradas, Clean Architecture (`routes` → `services` → `repositories` → `models`) | §3, §12 |
+| **Backend** | ✅ Funcional — FastAPI sobe sem erros, 25 rotas registradas, Clean Architecture (`routes` → `services` → `repositories` → `models`) | §3, §12 |
 | **Banco de dados** | ✅ Schema completo (`users`, `uploads`, `transactions` + 4 enums Postgres) via Alembic, validado em SQLite (upgrade/downgrade) | §3, §12 |
 | **Autenticação** | ✅ JWT completo (`register`/`login`/`refresh`) testado ponta a ponta; falta `/auth/logout` e revogação de refresh token | §3, §4, §12 |
 | **Migrations** | ✅ 1 migration inicial (`7132eab5146a_initial_schema`), validada upgrade/downgrade em SQLite + `--sql` offline para Postgres; **nunca rodou contra Postgres real** | §3, §8 |
-| **APIs** | 🟡 22 rotas (21 → 22); auth + list endpoints + **`POST /uploads/pdf` (novo, real)**; demais (filtros de transactions, analytics, assistant, reports) ainda stubs `501` | §4, §5, §12 |
+| **APIs** | 🟡 25 rotas (22 → 25); auth + **Transactions API completa (novo)** + `POST /uploads/pdf`; analytics/assistant/reports ainda stubs `501` | §4, §5, §12 |
 | **Frontend** | 🟡 UI de 2 telas (login, dashboard) com dados mock; sem scaffold de plataforma (`flutter create .` nunca executado); não conectado ao backend | §1, §4, §12 |
-| **Analytics** | 🟡 `health_score.py` implementado (lógica pura, 4 dimensões), não exposto via API; forecast/behavioral/heatmap não iniciados | §3, §5, §12 |
+| **Analytics** | 🟡 `health_score.py` implementado (lógica pura, 4 dimensões), não exposto via API; forecast/behavioral/heatmap não iniciados. `GET /transactions/summary` (novo) cobre agregados básicos | §3, §5, §12 |
 | **OCR** | 🟡 Pipeline `extractor.py` (pdfplumber → PyMuPDF → Tesseract OCR), **refatorado para operar 100% em memória (bytes)** e integrado a `POST /uploads/pdf`; OCR real (Tesseract) ainda não testado em fluxo real | §3, §4, §12 |
-| **IA (Categorizador)** | 🟡 Regras por keyword (10 categorias) **agora integradas ao fluxo de upload**; pipeline ML (TF-IDF + LogisticRegression) existe, mas `train()` nunca foi chamado — sem `categorizer.joblib`, confidence 0.95 (regras) ou 0.0 (sem modelo) | §3, §4, §12 |
-| **Upload de PDF** | ✅ **`POST /api/v1/uploads/pdf` implementado** (MVP síncrono, sem SSE) — extractor → categorizer → repository, dedupe via hash, status PENDING→PROCESSING→COMPLETED/FAILED | §5, §13 |
-| **Testes** | 🟡 **26 testes (novo)** — 18 unitários (`extractor.py` helpers puros) + 8 integração (`POST /uploads/pdf`: happy path, dedupe, sem token, tipo/banco/tamanho inválido, erro de extração). `core/security.py`, `categorizer.py`, `health_score.py`, rotas de auth ainda sem testes | §9, §10 |
+| **IA (Categorizador)** | 🟡 Regras por keyword (10 categorias) integradas ao fluxo de upload; pipeline ML (TF-IDF + LogisticRegression) existe, mas `train()` nunca foi chamado — sem `categorizer.joblib`. **`PATCH /transactions/{id}` (novo) permite correção manual** (seta confidence_score=1.0, sinal útil para retreino futuro) | §3, §4, §12 |
+| **Upload de PDF** | ✅ `POST /api/v1/uploads/pdf` (MVP síncrono, sem SSE) — extractor → categorizer → repository, dedupe via hash, status PENDING→PROCESSING→COMPLETED/FAILED | §5, §13 |
+| **Transactions API** | ✅ **Completa (novo)** — `GET /` (paginação/filtros/busca/ordenação), `GET /summary` (agregados por tipo/categoria), `PATCH /{id}` (corrige categoria/subcategoria), `DELETE /{id}` | §4, §13 |
+| **Testes** | 🟡 **49 testes** (26 → 49) — 18 unitários (`extractor.py`) + 31 integração (8 upload + 23 transactions). `core/security.py`, `categorizer.py`, `health_score.py`, rotas de auth ainda sem testes | §9, §10 |
 
 ---
 
@@ -153,13 +154,14 @@ financily/
 
 | Item | Status | Pendência |
 |---|---|---|
-| Backend API (`main.py`) | ✅ Sobe sem erros, 22 rotas, `/api/docs` funcional | Routers `transactions`, `analytics`, `assistant`, `reports` ainda são stubs/list-only — lógica de negócio não implementada |
+| Backend API (`main.py`) | ✅ Sobe sem erros, 25 rotas, `/api/docs` funcional | Routers `analytics`, `assistant`, `reports` ainda são stubs — lógica de negócio não implementada |
 | Banco de dados | ✅ Schema completo via Alembic (validado em SQLite) | Não testado contra PostgreSQL real (sem instância local disponível) |
 | Auth | ✅ register/login/refresh funcionais ponta a ponta | Sem `/auth/logout`, sem rate limiting, sem refresh token revocation/rotation |
-| **Upload de PDF** | ✅ `POST /uploads/pdf` funcional (MVP síncrono) — testado com extractor mockado | Sem SSE de progresso (decisão desta sessão, ver "Última Sessão"); sem fixtures de PDF reais para testar `_try_pdfplumber`/`_try_ocr` ponta a ponta |
+| Upload de PDF | ✅ `POST /uploads/pdf` funcional (MVP síncrono) — testado com extractor mockado | Sem SSE de progresso; sem fixtures de PDF reais para testar `_try_pdfplumber`/`_try_ocr` ponta a ponta |
+| **Transactions API** | ✅ `GET /` (paginação/filtros/busca/ordenação), `GET /summary`, `PATCH /{id}`, `DELETE /{id}` — testado com 23 testes de integração | `GET /{id}` (detalhe de uma transação) não foi pedido/implementado; sem endpoint de criação manual de transação |
 | Parser Santander | Função existe | `_parse_santander_row` ainda é cópia do Itaú — placeholder |
 | OCR | Pipeline codificado, refatorado para memória, integrado ao upload | Caminho OCR (`_try_ocr`/Tesseract) não exercitado por nenhum teste/fixture real ainda |
-| Categorizador ML | Pipeline completo, integrado ao upload (`categorize()` chamado por transação) | `train()` nunca chamado; sem `categorizer.joblib`; toda transação que não bate regra de keyword fica `OTHER`/confidence `0.0` |
+| Categorizador ML | Pipeline completo, integrado ao upload (`categorize()` chamado por transação); correção manual via `PATCH /transactions/{id}` agora gera sinal `confidence_score=1.0` | `train()` nunca chamado; sem `categorizer.joblib`; toda transação que não bate regra de keyword fica `OTHER`/confidence `0.0`; correções manuais ainda não são usadas como dataset de retreino |
 | Roteamento Flutter | Funciona | `redirect` é `// TODO`; só 2 telas de 8+ planejadas |
 | Login Flutter | UI completa | Não conectado ao backend `/auth/login` real (agora disponível) |
 | Projeto Flutter | `pubspec.yaml` rico | Sem scaffold de plataforma; fontes `Syne-*.ttf` ausentes |
@@ -168,8 +170,7 @@ financily/
 
 ## 5. Funcionalidades planejadas, não iniciadas
 
-- **SSE de progresso para upload**: `POST /uploads/pdf` hoje é síncrono (MVP); stream de progresso fica como follow-up (ver "Última Sessão")
-- **Transactions API completa**: filtros, paginação, summary, update (correção manual de categoria), delete
+- **SSE de progresso para upload**: `POST /uploads/pdf` hoje é síncrono (MVP); stream de progresso fica como follow-up
 - **Analytics API real**: dashboard payload, heatmap, categorias, forecast (Prophet), health-score (conectar `health_score.py`), behavioral, subscriptions
 - **Análise comportamental** (anomaly detection, clustering): zero código
 - **Detecção de assinaturas recorrentes**: zero código
@@ -217,10 +218,12 @@ financily/
 - OCR depende de Tesseract instalado no SO (`TESSERACT_CMD`), sem verificação/tratamento se ausente.
 - Migration inicial validada apenas em SQLite + `--sql` offline para Postgres — **nunca rodou contra um Postgres real**. Risco baixo (DDL gerado é padrão), mas deve ser validado no primeiro deploy/ambiente com Postgres.
 - Flutter sem scaffold = primeira tentativa de `flutter run` vai falhar.
-- 🟡 **Parcialmente mitigado**: 26 testes automatizados criados nesta sessão (extractor + upload), mas cobertura ainda é pontual — auth, categorizer, health_score, repositories permanecem sem rede de segurança.
+- 🟡 **Parcialmente mitigado**: 49 testes automatizados (extractor + upload + transactions), mas cobertura ainda é pontual — auth, categorizer, health_score, repositories de user/upload permanecem sem rede de segurança.
 - Auth sem rate limiting/brute-force protection — aceitável para MVP local, revisar antes de produção.
-- 🆕 **Dedupe de transações via `transactions.hash` (unique global, não escopado por `user_id`)** — dois usuários diferentes que importem uma linha de extrato byte-idêntica (mesma data+descrição+valor, ex.: assinatura recorrente comum) colidiriam no hash e a segunda seria silenciosamente tratada como duplicata. É o mecanismo oficial documentado (regra Fintech #3) e definido na migration inicial (Fase 1) — não alterado nesta sessão por exigir migration + decisão explícita. Risco baixo na prática (hash inclui data+descrição+valor formatados), mas registrado para decisão futura.
-- 🆕 **`TransactionRepository.create()` comita uma transação por vez** — para faturas com muitas linhas, `POST /uploads/pdf` faz N commits sequenciais. Aceitável para volumes de fatura típicos (10–100 linhas); revisar para bulk-insert se necessário (regra Análise de Dados #3 — não otimizar prematuramente).
+- **Dedupe de transações via `transactions.hash` (unique global, não escopado por `user_id`)** — dois usuários diferentes que importem uma linha de extrato byte-idêntica (mesma data+descrição+valor, ex.: assinatura recorrente comum) colidiriam no hash e a segunda seria silenciosamente tratada como duplicata. É o mecanismo oficial documentado (regra Fintech #3) e definido na migration inicial (Fase 1) — não alterado por exigir migration + decisão explícita. Risco baixo na prática (hash inclui data+descrição+valor formatados), mas registrado para decisão futura.
+- **`TransactionRepository.create()` comita uma transação por vez** — para faturas com muitas linhas, `POST /uploads/pdf` faz N commits sequenciais. Aceitável para volumes de fatura típicos (10–100 linhas); revisar para bulk-insert se necessário (regra Análise de Dados #3 — não otimizar prematuramente).
+- 🆕 **`GET /transactions/?limit=N` faz uma query `SELECT` + uma query `COUNT` separada** para montar `total` — duplica o custo de leitura por requisição. Aceitável para volumes do MVP; revisar (ex.: window function) apenas se virar gargalo medido.
+- 🆕 **`PATCH /transactions/{id}` sempre seta `confidence_score=1.0` quando há qualquer campo alterado** — assume que toda correção manual é 100% confiável. Correto para o caso de uso (usuário corrigindo a própria transação), mas é uma decisão de produto implícita; revisar se no futuro outras roles (ex. admin) puderem editar transações de terceiros.
 
 ---
 
@@ -234,16 +237,18 @@ financily/
 - [x] ~~`.env.example`~~ ✅ feito
 - [x] ~~`__init__.py` nos pacotes Python~~ ✅ feito
 - [x] ~~Remover duplicata `httpx` do requirements~~ ✅ feito (sessão de governança)
-- [x] ~~Instalar deps PDF/IA no venv (`pdfplumber`, `pymupdf`, `pytesseract`, `Pillow`, `pandas`, `scikit-learn`, `joblib`)~~ ✅ feito (esta sessão)
-- [x] ~~Testes unitários para helpers puros de `extractor.py`~~ ✅ feito (esta sessão, 18 testes)
-- [ ] Testes unitários para `categorizer.py` (regras), `health_score.py`, `core/security.py`, repositories, rotas de auth — ainda zero
+- [x] ~~Instalar deps PDF/IA no venv (`pdfplumber`, `pymupdf`, `pytesseract`, `Pillow`, `pandas`, `scikit-learn`, `joblib`)~~ ✅ feito
+- [x] ~~Testes unitários para helpers puros de `extractor.py`~~ ✅ feito (18 testes)
+- [x] ~~Transactions API (paginação/filtros/busca/ordenação/summary/update/delete)~~ ✅ feito (esta sessão, 23 testes)
+- [ ] Testes unitários para `categorizer.py` (regras), `health_score.py`, `core/security.py`, repositories de user/upload, rotas de auth — ainda zero
 - [ ] Fixtures de PDF reais (Itaú/Santander) em `backend/tests/fixtures/` para testar `_try_pdfplumber`/`_try_ocr` ponta a ponta (testes atuais de `POST /uploads/pdf` usam `extract_transactions` mockado)
-- [ ] SSE de progresso para `POST /uploads/pdf` — endpoint hoje é síncrono (decisão desta sessão); avaliar necessidade real com faturas grandes/OCR
+- [ ] SSE de progresso para `POST /uploads/pdf` — endpoint hoje é síncrono; avaliar necessidade real com faturas grandes/OCR
 - [ ] `prophet`/`nltk` listados em `requirements.txt` mas não instalados no venv — deferidos até o trabalho de forecast/behavioral (Fase 3)
 - [ ] `flutter create .` para gerar scaffold de plataforma
 - [ ] Resolver fontes `Syne` (adicionar `.ttf` ou usar `google_fonts.GoogleFonts.syne()`)
 - [ ] Validar `alembic upgrade head` contra PostgreSQL real (Docker local ou Supabase)
 - [ ] Implementar `/auth/logout` (revogação de refresh token) — opcional para MVP
+- [ ] Usar correções manuais (`PATCH /transactions/{id}`) como dataset de retreino do categorizador ML
 
 ---
 
@@ -279,8 +284,9 @@ financily/
 | Parser de extratos (Santander) | ❌ Não iniciado (stub = cópia do Itaú) |
 | OCR | 🟡 Em desenvolvimento (pipeline refatorado para memória e **integrado ao upload** como fallback; caminho OCR não exercitado por teste real) |
 | **Banco de dados** | ✅ **Funcional** — schema completo (`users`, `uploads`, `transactions`), Alembic configurado, migration inicial validada |
-| **API** | ✅ **Funcional** — app sobe, `/api/docs` e `/openapi.json` ok, 22 rotas registradas |
-| Categorização automática | 🟡 Em desenvolvimento (regras prontas e **agora integradas** ao endpoint de upload; ML não treinado — toda transação fora das regras de keyword fica `OTHER`/confidence `0.0`) |
+| **API** | ✅ **Funcional** — app sobe, `/api/docs` e `/openapi.json` ok, 25 rotas registradas |
+| **Transactions API** | ✅ **Funcional** — `GET /` (paginação/filtros/busca/ordenação), `GET /summary` (agregados), `PATCH /{id}` (corrige categoria/subcategoria), `DELETE /{id}` |
+| Categorização automática | 🟡 Em desenvolvimento (regras prontas e integradas ao endpoint de upload; ML não treinado — toda transação fora das regras de keyword fica `OTHER`/confidence `0.0`; correção manual via `PATCH /transactions/{id}` agora seta confidence `1.0`) |
 | Previsão financeira | ❌ Não iniciado |
 | Assistente IA | ❌ Não iniciado (stub 501) |
 | Exportação PDF | ❌ Não iniciado (stub 501) |
@@ -297,15 +303,15 @@ financily/
 ## 13. Próximos passos recomendados (ordem ideal)
 
 1. ✅ ~~Desbloquear o backend~~ — **concluído na Fase 1**
-2. ✅ ~~Upload de PDF end-to-end~~ — **concluído nesta sessão** (MVP síncrono: `POST /api/v1/uploads/pdf`, extractor → categorizer → repository, dedupe por hash)
-3. **Conectar Flutter ao backend**: `frontend/lib/core/network/` (Dio + interceptor de refresh token), telas de login/registro reais consumindo `/api/v1/auth/*` — agora também pode consumir `POST /uploads/pdf`
-4. **Transactions API completa**: list com paginação/filtros, summary, update (correção de categoria), delete
-5. **Analytics API real**: começar por `/analytics/health-score` (já existe `health_score.py`) e `/analytics/dashboard`
+2. ✅ ~~Upload de PDF end-to-end~~ — **concluído na Fase 2** (MVP síncrono: `POST /api/v1/uploads/pdf`, extractor → categorizer → repository, dedupe por hash)
+3. ✅ ~~Transactions API completa~~ — **concluído nesta sessão** (paginação/filtros/busca/ordenação, summary, update de categoria/subcategoria, delete)
+4. **Conectar Flutter ao backend**: `frontend/lib/core/network/` (Dio + interceptor de refresh token), telas de login/registro reais consumindo `/api/v1/auth/*` — agora também pode consumir `POST /uploads/pdf` e `GET /transactions/*`
+5. **Analytics API real**: começar por `/analytics/health-score` (já existe `health_score.py`) e `/analytics/dashboard` (pode reaproveitar `TransactionRepository.get_summary`)
 6. **Frontend — desbloquear scaffold**: `flutter create .` preservando `lib/`/`pubspec.yaml`/`assets/`; resolver fontes Syne
 7. **Parser Santander real** (substituir stub)
-8. **Categorizador ML**: treinar com dados reais de faturas Itaú/Santander
+8. **Categorizador ML**: treinar com dados reais de faturas Itaú/Santander; considerar correções manuais (`PATCH /transactions/{id}`) como dataset
 9. **Forecast (Prophet) + behavioral**: implementar após volume real de transações
-10. **Testes**: cobrir `core/security.py`, repositories, rotas de auth, `categorizer.py`, `health_score.py` (extractor e uploads já cobertos — 26 testes)
+10. **Testes**: cobrir `core/security.py`, repositories de user/upload, rotas de auth, `categorizer.py`, `health_score.py` (extractor, uploads e transactions já cobertos — 49 testes)
 11. **Fixtures de PDF reais (Itaú/Santander)** para testar `_try_pdfplumber`/`_try_ocr` ponta a ponta (atualmente mockado)
 12. **Validar Alembic contra PostgreSQL real** antes do primeiro deploy
 
@@ -313,11 +319,11 @@ financily/
 
 ## 14. Estimativa de conclusão
 
-**~28–30% do escopo total** descrito no `README.md`/`Prompt Inicial.txt`.
+**~33–35% do escopo total** descrito no `README.md`/`Prompt Inicial.txt`.
 
-A fundação do backend (banco de dados, auth, schema, repositórios, Alembic, contrato de API completo via stubs) está pronta e validada (Fase 1). Nesta sessão (Fase 2), a **primeira fatia vertical de valor real** foi entregue: `POST /api/v1/uploads/pdf` conecta extractor → categorizer → repository de ponta a ponta, com dedupe, tratamento de erro/estado `FAILED`, validação de entrada e 26 testes automatizados (18 unitários + 8 integração). Isso eleva o percentual em ~5-8 pontos em relação à fundação pura, pois é a primeira funcionalidade de domínio (não-auth) operacional.
+A fundação do backend (Fase 1) e o upload de PDF end-to-end (Fase 2) já estavam prontos e validados. Nesta sessão (Fase 3), a **Transactions API ficou completa**: `GET /` (paginação, filtros por data/categoria/tipo, busca textual, ordenação), `GET /summary` (totais de receita/despesa/saldo e agregados por categoria), `PATCH /{id}` (correção manual de categoria/subcategoria, com sinal `confidence_score=1.0`) e `DELETE /{id}`, todos cobertos por 23 novos testes de integração (total agora 49). Isso completa o segundo módulo de domínio (dados agora podem ser consultados, corrigidos e removidos pelo usuário, não só importados), elevando o percentual em ~5 pontos.
 
-O que falta é majoritariamente: (a) conectar o Flutter ao backend, (b) Transactions API e Analytics API reais, (c) scaffold de plataforma Flutter, (d) treinar o categorizador ML, (e) fixtures de PDF reais para validar o pipeline de extração ponta a ponta, (f) testes para os módulos restantes (`categorizer`, `health_score`, `security`, auth routes, repositories).
+O que falta é majoritariamente: (a) conectar o Flutter ao backend (incluindo telas que consumam upload/transactions), (b) Analytics API real (`health-score`, `dashboard`, forecast), (c) scaffold de plataforma Flutter, (d) treinar o categorizador ML, (e) fixtures de PDF reais para validar o pipeline de extração ponta a ponta, (f) testes para os módulos restantes (`categorizer`, `health_score`, `security`, auth routes, repositories de user/upload).
 
 ---
 
@@ -327,10 +333,11 @@ O que falta é majoritariamente: (a) conectar o Flutter ao backend, (b) Transact
 |---|---|---|
 | **Fase 1 — Fundação do Backend** | Banco de dados, auth JWT, schema, repositórios, Alembic, contrato de API (stubs) | ✅ Concluída (commit `4142824`) |
 | **Fase 1.5 — Governança e Estruturação** | `CLAUDE_PROJECT_RULES.md`, `docs/session_start.md`, `docs/session_end.md`, auditoria, atualização de `project_status.md`/`next_session.md` | ✅ Concluída (commits `f8d9b78`/`f7dd82c`) |
-| **Fase 2 — Primeira fatia vertical de valor** | Upload de PDF end-to-end (extractor → categorizer → repository), dedupe, 26 testes (18 unit + 8 integração) | ✅ Concluída (esta sessão, commit pendente) |
-| **Fase 3 — Domínio completo** | Conexão Flutter↔Backend (`core/network/` + login real), Transactions API (paginação/filtros/summary/update/delete), Analytics API real (`health-score`, `dashboard`, forecast), Categorizador ML treinado, Parser Santander real, fixtures de PDF reais | ⏭️ Próxima (ver `docs/next_session.md`) |
-| **Fase 4 — Frontend completo** | `flutter create .` (scaffold de plataforma), 8+ telas conectadas ao backend, fontes Syne resolvidas | ❌ Não iniciada |
-| **Fase 5 — Produção** | Testes automatizados restantes, PostgreSQL real validado, rate limiting/auth hardening, CI (`.github/workflows/`), exportações PDF/Excel/CSV, notificações, assistente IA, SSE de progresso | ❌ Não iniciada |
+| **Fase 2 — Primeira fatia vertical de valor** | Upload de PDF end-to-end (extractor → categorizer → repository), dedupe, 26 testes (18 unit + 8 integração) | ✅ Concluída (commits `1c362f2`/`3ae52b5`) |
+| **Fase 3 — Transactions API** | `GET /` (paginação/filtros/busca/ordenação), `GET /summary`, `PATCH /{id}`, `DELETE /{id}`, 23 testes de integração | ✅ Concluída (esta sessão, commit pendente) |
+| **Fase 4 — Conexão Flutter + Analytics real** | Conexão Flutter↔Backend (`core/network/` + login/upload/transactions reais), Analytics API real (`health-score`, `dashboard`, forecast), Categorizador ML treinado, Parser Santander real, fixtures de PDF reais | ⏭️ Próxima (ver `docs/next_session.md`) |
+| **Fase 5 — Frontend completo** | `flutter create .` (scaffold de plataforma), 8+ telas conectadas ao backend, fontes Syne resolvidas | ❌ Não iniciada |
+| **Fase 6 — Produção** | Testes automatizados restantes, PostgreSQL real validado, rate limiting/auth hardening, CI (`.github/workflows/`), exportações PDF/Excel/CSV, notificações, assistente IA, SSE de progresso | ❌ Não iniciada |
 
 ---
 
@@ -463,7 +470,7 @@ Todas as três libs **já constam em `requirements.txt`**, mas não foram instal
 - **MVP síncrono, sem SSE**: `POST /uploads/pdf` processa e responde de forma síncrona. SSE de progresso fica documentado como follow-up (§5, §9) — decisão da sessão anterior, mantida.
 - **Dedupe global de `transactions.hash`**: mantido como está (mecanismo oficial, regra Fintech #3). O risco teórico de colisão cross-user em linhas byte-idênticas foi documentado em §8 como risco aceito, não alterado nesta sessão (exigiria migration + decisão explícita).
 - **Estado `FAILED` em vez de erro HTTP genérico** para "zero transações extraídas" e "exceção durante extração": resposta `201` com `status="failed"` e `error_message` amigável (sem detalhes internos da exceção), mantendo `Upload` como trilha de auditoria — alinhado à regra 7.4 (estado explícito).
-- **`prophet`/`nltk` permanecem não instalados** — deferidos para a Fase 3 (forecast/behavioral), não bloqueiam esta fatia.
+- **`prophet`/`nltk` permanecem não instalados** — deferidos para a Fase 4 (forecast/behavioral), não bloqueiam esta fatia.
 - **Testes de integração usam `extract_transactions` mockado** (via `monkeypatch`) em vez de fixtures de PDF reais — gerar PDFs de teste reais (Itaú/Santander) é não-trivial e foi documentado como débito (§9) em vez de bloquear a entrega desta fatia.
 
 ### Validação executada
@@ -479,3 +486,41 @@ Todas as três libs **já constam em `requirements.txt`**, mas não foram instal
 - ✅ 26 testes automatizados passando (extractor + upload endpoint)
 - ✅ App sobe sem erros após as mudanças
 - ✅ Nenhuma alteração arquitetural fora do escopo aprovado (Opção A)
+
+---
+
+## Última Sessão — Fase 3 (Transactions API completa)
+
+**Data**: 2026-06-12
+**Objetivo**: Completar o segundo módulo de domínio do MVP — expor, agregar, corrigir e remover as transações que `POST /uploads/pdf` (Fase 2) já persiste. Escopo explicitamente limitado a `transactions`: sem Analytics, sem Flutter, sem IA/Open Finance/Dashboard.
+
+### Arquivos atualizados
+- `backend/app/schemas/transaction.py` — novos schemas `TransactionList` (`items`/`total`/`skip`/`limit`), `CategorySummary`, `TransactionSummary` (`total_income`/`total_expenses`/`balance`/`transaction_count`/`by_category`/`date_from`/`date_to`), `TransactionUpdate` (`category`/`subcategory`, ambos opcionais).
+- `backend/app/repositories/transaction_repository.py` — reescrito: `_apply_filters()` (helper privado compartilhado para `user_id` + `date_from`/`date_to`/`category`/`type`/`search`), `list_by_user()` estendido com filtros/busca (`ilike` em `description`/`merchant`)/ordenação (whitelist `SORTABLE_FIELDS` = `date`/`amount`/`description`), novo `count_by_user()`, novo `get_summary()` (duas queries agregadas: por `type` e por `category`), novo `update()`. `get_by_id`/`delete` reaproveitados sem alteração.
+- `backend/app/api/v1/routes/transactions.py` — reescrito: `GET /` (paginação + filtros + busca + ordenação, retorna `TransactionList`), `GET /summary` (retorna `TransactionSummary`), `PATCH /{id}` (aplica `TransactionUpdate`, seta `confidence_score=1.0` quando há mudança, 404 se não existir/não for do usuário), `DELETE /{id}` (`204`, 404 se não existir/não for do usuário).
+- `backend/tests/conftest.py` — novo fixture `other_user` (segundo usuário, para testes de isolamento).
+- `backend/tests/integration/test_transactions.py` (NOVO) — 23 testes cobrindo list (vazio, paginação, filtros de data/categoria/tipo, busca, ordenação, isolamento por usuário, 401), summary (vazio, com dados, filtro de data, 401), PATCH (happy path, 404 inexistente, 404 outro usuário, 422 categoria inválida, 401) e DELETE (happy path, 404 inexistente, 404 outro usuário, 401).
+- `docs/project_status.md` — este documento (Visão Geral, §4, §5, §8, §9, §12, §13, §14, §15 e esta seção).
+
+### Decisões tomadas
+- **`amount` sempre positivo, sinal vem de `type`**: `get_summary()` soma por `TransactionType` (CREDIT = receita, DEBIT = despesa) em vez de depender do sinal de `amount` — consistente com `_parse_itau_row` (`amount=abs(amount)`).
+- **`total` via `COUNT` separado**: `GET /transactions/` faz uma query `SELECT` (paginada) + uma `COUNT` (mesmos filtros) para retornar `total` junto com `items` — custo extra aceito para volumes do MVP (documentado em §8 como possível otimização futura, não prematura).
+- **Busca textual via `.ilike()`**: SQLAlchemy traduz automaticamente para `lower()+LIKE` em dialetos sem `ILIKE` nativo (SQLite), então o mesmo código funciona em teste (SQLite) e produção (Postgres) sem branch condicional.
+- **Whitelist de ordenação (`SORTABLE_FIELDS`)**: `sort_by` aceita apenas `date`/`amount`/`description` (validado também via `Query(pattern=...)` no FastAPI) — evita acesso arbitrário a atributos do modelo.
+- **`PATCH /{id}` seta `confidence_score=1.0`** sempre que `category`/`subcategory` é alterado — correção manual do próprio usuário é tratada como 100% confiável; documentado em §8 como decisão de produto implícita (revisar se outras roles puderem editar transações de terceiros).
+- **404 (não 403) em `PATCH`/`DELETE` de transação de outro usuário** — `get_by_id` já filtra por `user_id`; evita confirmar a existência do recurso para quem não é o dono.
+- **Sem `GET /transactions/{id}`**: não fazia parte do escopo solicitado; `PATCH`/`DELETE` operam diretamente por `id` sem endpoint de leitura individual — pode ser adicionado depois se o Flutter precisar de uma tela de detalhe.
+- **Sem endpoint de criação manual de transação**: testes seedam `Transaction` diretamente via `db_session` (helper `_create_transaction`); criação real continua exclusivamente via `POST /uploads/pdf`.
+
+### Validação executada
+- `pytest backend/tests/ -v` → **49/49 testes passando** (18 unit extractor + 8 integração upload + 23 integração transactions).
+- `from app.main import app` → 25 rotas registradas, incluindo `GET /api/v1/transactions/`, `GET /api/v1/transactions/summary`, `PATCH /api/v1/transactions/{transaction_id}`, `DELETE /api/v1/transactions/{transaction_id}`.
+
+### Critérios de sucesso da sessão
+- ✅ `GET /transactions/` com paginação, filtros (data/categoria/tipo), busca textual e ordenação
+- ✅ `GET /transactions/summary` com totais de receita/despesa/saldo e agregados por categoria
+- ✅ `PATCH /transactions/{id}` corrige categoria/subcategoria e sinaliza confiança manual
+- ✅ `DELETE /transactions/{id}` remove a transação (com isolamento por usuário)
+- ✅ 23 novos testes de integração passando (49/49 no total)
+- ✅ App sobe sem erros após as mudanças (25 rotas)
+- ✅ Nenhuma funcionalidade fora do escopo (Analytics, Flutter, IA, Open Finance, Dashboard) implementada
