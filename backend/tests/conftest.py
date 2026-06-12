@@ -55,3 +55,12 @@ async def test_user(db_session: AsyncSession) -> User:
 async def auth_headers(test_user: User) -> dict[str, str]:
     token = create_access_token(str(test_user.id))
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest_asyncio.fixture
+async def other_user(db_session: AsyncSession) -> User:
+    user = User(email="other@example.com", password_hash=hash_password("Senha123!"), name="Other User")
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+    return user

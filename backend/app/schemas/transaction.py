@@ -26,3 +26,31 @@ class TransactionRead(BaseModel):
     installment_total: Optional[float] = None
     confidence_score: float
     created_at: datetime
+
+
+class TransactionList(BaseModel):
+    items: list[TransactionRead]
+    total: int
+    skip: int
+    limit: int
+
+
+class CategorySummary(BaseModel):
+    category: TransactionCategory
+    total: float
+    count: int
+
+
+class TransactionSummary(BaseModel):
+    total_income: float
+    total_expenses: float
+    balance: float
+    transaction_count: int
+    by_category: list[CategorySummary]
+    date_from: Optional[datetime] = None
+    date_to: Optional[datetime] = None
+
+
+class TransactionUpdate(BaseModel):
+    category: Optional[TransactionCategory] = None
+    subcategory: Optional[str] = None
