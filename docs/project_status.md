@@ -1,7 +1,7 @@
 # Financily — Status do Projeto
 
 > Auditoria técnica completa. Última atualização: 2026-06-12.
-> Branch: `master` · Commits: `2639e79` (arquitetura inicial) → `6782076` (preview HTML + docs) → `1fb4c96` (auditoria) → `4142824` (fundação do backend) → `f8d9b78`/`f7dd82c` (governança) → `1c362f2`/`3ae52b5` (upload de PDF end-to-end) → **Transactions API completa (esta sessão, commit pendente)**
+> Branch: `master` · Commits: `2639e79` (arquitetura inicial) → `6782076` (preview HTML + docs) → `1fb4c96` (auditoria) → `4142824` (fundação do backend) → `f8d9b78`/`f7dd82c` (governança) → `1c362f2`/`3ae52b5` (upload de PDF end-to-end) → Transactions API completa → **Conexão Frontend↔Backend (esta sessão, commit pendente)**
 
 ---
 
@@ -13,14 +13,14 @@
 | **Banco de dados** | ✅ Schema completo (`users`, `uploads`, `transactions` + 4 enums Postgres) via Alembic, validado em SQLite (upgrade/downgrade) | §3, §12 |
 | **Autenticação** | ✅ JWT completo (`register`/`login`/`refresh`) testado ponta a ponta; falta `/auth/logout` e revogação de refresh token | §3, §4, §12 |
 | **Migrations** | ✅ 1 migration inicial (`7132eab5146a_initial_schema`), validada upgrade/downgrade em SQLite + `--sql` offline para Postgres; **nunca rodou contra Postgres real** | §3, §8 |
-| **APIs** | 🟡 25 rotas (22 → 25); auth + **Transactions API completa (novo)** + `POST /uploads/pdf`; analytics/assistant/reports ainda stubs `501` | §4, §5, §12 |
-| **Frontend** | 🟡 UI de 2 telas (login, dashboard) com dados mock; sem scaffold de plataforma (`flutter create .` nunca executado); não conectado ao backend | §1, §4, §12 |
-| **Analytics** | 🟡 `health_score.py` implementado (lógica pura, 4 dimensões), não exposto via API; forecast/behavioral/heatmap não iniciados. `GET /transactions/summary` (novo) cobre agregados básicos | §3, §5, §12 |
-| **OCR** | 🟡 Pipeline `extractor.py` (pdfplumber → PyMuPDF → Tesseract OCR), **refatorado para operar 100% em memória (bytes)** e integrado a `POST /uploads/pdf`; OCR real (Tesseract) ainda não testado em fluxo real | §3, §4, §12 |
-| **IA (Categorizador)** | 🟡 Regras por keyword (10 categorias) integradas ao fluxo de upload; pipeline ML (TF-IDF + LogisticRegression) existe, mas `train()` nunca foi chamado — sem `categorizer.joblib`. **`PATCH /transactions/{id}` (novo) permite correção manual** (seta confidence_score=1.0, sinal útil para retreino futuro) | §3, §4, §12 |
-| **Upload de PDF** | ✅ `POST /api/v1/uploads/pdf` (MVP síncrono, sem SSE) — extractor → categorizer → repository, dedupe via hash, status PENDING→PROCESSING→COMPLETED/FAILED | §5, §13 |
-| **Transactions API** | ✅ **Completa (novo)** — `GET /` (paginação/filtros/busca/ordenação), `GET /summary` (agregados por tipo/categoria), `PATCH /{id}` (corrige categoria/subcategoria), `DELETE /{id}` | §4, §13 |
-| **Testes** | 🟡 **49 testes** (26 → 49) — 18 unitários (`extractor.py`) + 31 integração (8 upload + 23 transactions). `core/security.py`, `categorizer.py`, `health_score.py`, rotas de auth ainda sem testes | §9, §10 |
+| **APIs** | 🟡 25 rotas — auth + Transactions API completa + `POST /uploads/pdf`; analytics/assistant/reports ainda stubs `501` | §4, §5, §12 |
+| **Frontend** | 🟢 **Conectado ao backend (novo)** — login/registro reais, JWT persistido (`flutter_secure_storage`), upload de PDF, lista de transações (filtros/busca) e resumo financeiro consumindo a API; 8 telas (splash, login, registro, dashboard, upload, transações, resumo). Riverpod "clássico" (sem codegen) — débito documentado. **`flutter create .`/`pub get`/`analyze`/`test` ainda não executados neste ambiente** | §1, §4, §12, Fase 4 |
+| **Analytics** | 🟡 `health_score.py` implementado (lógica pura, 4 dimensões), não exposto via API; forecast/behavioral/heatmap não iniciados. `GET /transactions/summary` cobre agregados básicos e agora alimenta o dashboard Flutter | §3, §5, §12 |
+| **OCR** | 🟡 Pipeline `extractor.py` (pdfplumber → PyMuPDF → Tesseract OCR), refatorado para operar 100% em memória (bytes) e integrado a `POST /uploads/pdf`; OCR real (Tesseract) ainda não testado em fluxo real | §3, §4, §12 |
+| **IA (Categorizador)** | 🟡 Regras por keyword (10 categorias) integradas ao fluxo de upload; pipeline ML (TF-IDF + LogisticRegression) existe, mas `train()` nunca foi chamado — sem `categorizer.joblib`. `PATCH /transactions/{id}` permite correção manual (seta confidence_score=1.0, sinal útil para retreino futuro) | §3, §4, §12 |
+| **Upload de PDF** | ✅ `POST /api/v1/uploads/pdf` (MVP síncrono, sem SSE) — extractor → categorizer → repository, dedupe via hash, status PENDING→PROCESSING→COMPLETED/FAILED. **Agora consumido pela tela de Upload do Flutter (novo)** | §5, §13 |
+| **Transactions API** | ✅ Completa — `GET /` (paginação/filtros/busca/ordenação), `GET /summary` (agregados por tipo/categoria), `PATCH /{id}` (corrige categoria/subcategoria), `DELETE /{id}`. **Agora consumida pelas telas de Transações/Resumo/Dashboard do Flutter (novo)** | §4, §13 |
+| **Testes** | 🟡 **49 testes** (backend, inalterado) — 18 unitários (`extractor.py`) + 31 integração (8 upload + 23 transactions). `core/security.py`, `categorizer.py`, `health_score.py`, rotas de auth, e **todo o frontend Flutter** ainda sem testes | §9, §10 |
 
 ---
 
@@ -87,28 +87,37 @@ financily/
 │       └── tests/{unit,integration}/  ❌ vazio
 │
 └── frontend/
-    ├── pubspec.yaml                   ⚠️ refs fontes inexistentes (inalterado)
+    ├── pubspec.yaml                   ✅ ATUALIZADO — `http_parser` adicionado; refs a fontes Syne inexistentes (inalterado)
     ├── assets/{fonts,images}/         ❌ vazio (inalterado)
     └── lib/
-        ├── main.dart                  ✅
+        ├── main.dart                  ✅ `ProviderScope` + `MaterialApp.router(routerConfig: appRouterProvider)`
         ├── core/
-        │   ├── theme/app_theme.dart   ✅ AppColors + ThemeData
-        │   ├── router/app_router.dart ✅ apenas 2 rotas
-        │   ├── network/                ❌ vazio
-        │   ├── constants/              ❌ vazio
-        │   └── utils/                  ❌ vazio
+        │   ├── theme/app_theme.dart   ✅ AppColors + ThemeData (inalterado)
+        │   ├── router/app_router.dart ✅ REESCRITO — 7 rotas + `redirect` por `AuthStatus` + `GoRouterRefreshListenable`
+        │   ├── network/                ✅ NOVO — camada HTTP completa
+        │   │   ├── api_config.dart        baseUrl `http://127.0.0.1:8000`, timeouts
+        │   │   ├── api_exception.dart      `ApiException.fromDioException` (mensagens PT-BR)
+        │   │   ├── auth_interceptor.dart   Bearer token + refresh-and-retry em 401
+        │   │   ├── token_storage.dart      `flutter_secure_storage` (tokens + user JSON)
+        │   │   ├── dio_client.dart         `createDio()`
+        │   │   └── providers.dart          `dioProvider`, `tokenStorageProvider`, `SessionExpiredNotifier`
+        │   ├── utils/jwt_utils.dart     ✅ NOVO — `decodeJwtPayload` (claim `sub`, sem libs externas)
+        │   └── constants/               ❌ vazio
         ├── features/
-        │   ├── auth/.../login_screen.dart        ✅ UI, login mockado
-        │   ├── dashboard/.../dashboard_screen.dart ✅ UI completa, dados mock (944 linhas)
-        │   ├── upload/                  ❌ vazio
-        │   ├── transactions/            ❌ vazio
+        │   ├── auth/                    ✅ CONECTADO — login + registro reais, JWT persistido
+        │   │   ├── data/{auth_repository.dart, models/{user_model,token_pair}.dart}
+        │   │   └── presentation/{providers/auth_provider.dart, screens/{login_screen,register_screen}.dart}
+        │   ├── dashboard/.../dashboard_screen.dart ✅ REESCRITO — saldo/receitas/despesas, pizza de categorias e últimas transações consomem a API; score/heatmap continuam mock (sem endpoint)
+        │   ├── upload/                  ✅ NOVO — seleção de banco + PDF (`file_picker`), `POST /uploads/pdf`, resultado com transações criadas/duplicadas
+        │   ├── transactions/             ✅ NOVO — lista paginada com filtros (tipo/categoria/busca) e tela de resumo por categoria
+        │   ├── splash/                   ✅ NOVO — tela exibida enquanto `AuthStatus.unknown` restaura a sessão
         │   ├── analytics/               ❌ vazio
         │   ├── assistant/                ❌ vazio
         │   └── reports/                  ❌ vazio
         └── shared/{widgets,models}/    ❌ vazio
 ```
 
-**Frontend inalterado nesta sessão** (escopo explicitamente fora desta rodada). Continua sem scaffold de plataforma (`flutter create .` nunca executado) — não existem `android/`, `ios/`, `windows/`, `macos/`, `web/`, `linux/`, `test/`, `.metadata`/`analysis_options.yaml`.
+**Frontend conectado ao backend nesta sessão (Fase 4)** — ver seção "Última Sessão — Fase 4" para o detalhamento completo. Continua sem scaffold de plataforma (`flutter create .` nunca executado) — não existem `android/`, `ios/`, `windows/`, `macos/`, `web/`, `linux/`, `test/`, `.metadata`/`analysis_options.yaml`. **`flutter pub get`, `flutter analyze` e `flutter test` também nunca executados** — todo o código desta sessão foi escrito e revisado manualmente, sem validação do compilador Dart (ver §8 e Fase 4).
 
 ---
 
@@ -116,9 +125,9 @@ financily/
 
 **Backend** (Python 3.12, `requirements.txt`): FastAPI 0.111, Uvicorn, SQLAlchemy 2.0 (async/asyncpg), Alembic, Pydantic v2 + pydantic-settings, python-jose + passlib (JWT/bcrypt), **`bcrypt==4.0.1` (pin obrigatório — ver §6)**, pdfplumber, PyMuPDF (`fitz`), pytesseract, Pillow, pandas, numpy, scikit-learn, prophet, nltk, joblib, httpx (duplicata removida nesta sessão — ver "Última Sessão"), pytest/pytest-asyncio/pytest-cov/faker.
 
-**Frontend** (Flutter ≥3.3, `pubspec.yaml`): inalterado — flutter_riverpod, riverpod_annotation, go_router, dio, retrofit, flutter_secure_storage, sqflite, hive_flutter, file_picker, desktop_drop, path_provider, fl_chart, google_fonts, shimmer, lottie, flutter_animate, cached_network_image, intl, freezed, json_serializable, dartz, logger, mockito.
+**Frontend** (Flutter ≥3.3, `pubspec.yaml`): `http_parser: ^4.0.2` adicionado nesta sessão (necessário para `MediaType` no upload multipart). Demais deps inalteradas — flutter_riverpod, riverpod_annotation, go_router, dio, retrofit, flutter_secure_storage, sqflite, hive_flutter, file_picker, desktop_drop, path_provider, fl_chart, google_fonts, shimmer, lottie, flutter_animate, cached_network_image, intl, freezed, json_serializable, dartz, logger, mockito.
 
-> Quase todas as dependências do Flutter (exceto `flutter_riverpod`, `go_router`, `google_fonts` parcialmente) continuam **declaradas mas não usadas**.
+> **Agora em uso de fato**: `flutter_riverpod` (providers clássicos), `go_router` (7 rotas + redirect), `dio` (+ `http_parser`), `flutter_secure_storage`, `file_picker`, `intl` (`NumberFormat.currency`). **Ainda declaradas mas não usadas**: `retrofit`, `sqflite`, `hive_flutter`, `desktop_drop`, `path_provider`, `fl_chart`, `google_fonts`, `shimmer`, `lottie`, `flutter_animate`, `cached_network_image`, `dartz`, `logger`, `mockito`. **`freezed`/`json_serializable`/`riverpod_generator`/`retrofit_generator`/`build_runner`** permanecem declaradas mas **deliberadamente não usadas nesta fase** — decisão arquitetural temporária (ver Fase 4: "Decisões arquiteturais").
 
 ---
 
@@ -127,9 +136,16 @@ financily/
 | Item | Local | Observação |
 |---|---|---|
 | Design tokens + tema dark | `frontend/lib/core/theme/app_theme.dart` | `AppColors` consistente com `docs/preview.html` |
-| Tela de Login (UI) | `login_screen.dart` | Glassmorphism, animação fade-in; login é mock (`Future.delayed`) |
-| Tela de Dashboard (UI) | `dashboard_screen.dart` | 944 linhas, dados estáticos mock |
-| Roteamento | `app_router.dart` | GoRouter com 2 rotas (`/login`, `/dashboard`) |
+| **Camada de rede (`core/network/`)** | `api_config.dart`, `dio_client.dart`, `auth_interceptor.dart`, `token_storage.dart`, `api_exception.dart`, `providers.dart` | ✅ NOVO — Dio configurado com `baseUrl=http://127.0.0.1:8000`, interceptor injeta Bearer e tenta `/auth/refresh` em 401, tokens/usuário em `flutter_secure_storage`, exceções normalizadas em PT-BR |
+| **Auth real (Flutter)** | `features/auth/` | ✅ NOVO — `login`/`register` conectados a `/api/v1/auth/*`; sessão restaurada no boot (`tryRestoreSession`); logout limpa `flutter_secure_storage` |
+| Tela de Login (UI) | `login_screen.dart` | ✅ ATUALIZADO — Glassmorphism, animação fade-in; agora chama `authControllerProvider.login()` real |
+| **Tela de Registro (UI)** | `register_screen.dart` | ✅ NOVO — nome opcional, e-mail, senha+confirmação, chama `register()` real (auto-login após registro) |
+| **Tela de Splash** | `splash/.../splash_screen.dart` | ✅ NOVO — exibida enquanto `AuthStatus.unknown` restaura a sessão salva |
+| Tela de Dashboard (UI) | `dashboard_screen.dart` | ✅ REESCRITO — saldo/receitas/despesas (`transactionsSummaryProvider`), pizza de categorias (top-5 + "Outros"), últimas 5 transações (`transactionsProvider`), logout via bottom sheet, pull-to-refresh. Score de saúde e heatmap de gastos permanecem mock (sem endpoint correspondente) |
+| **Tela de Transações** | `transactions/.../transactions_screen.dart` | ✅ NOVO — `GET /transactions/` com filtros (tipo/categoria), busca textual, paginação, pull-to-refresh, estados loading/erro/vazio |
+| **Tela de Resumo** | `transactions/.../summary_screen.dart` | ✅ NOVO — `GET /transactions/summary`: saldo do período, receitas/despesas, breakdown por categoria com barras de progresso |
+| **Tela de Upload** | `upload/.../upload_screen.dart` | ✅ NOVO — seleção de banco (Itaú/Santander) + PDF via `file_picker`, `POST /uploads/pdf`, exibe transações criadas/duplicadas, invalida providers de transações/resumo no sucesso |
+| Roteamento | `app_router.dart` | ✅ REESCRITO — GoRouter com 7 rotas (`/splash`, `/login`, `/register`, `/dashboard`, `/upload`, `/transactions`, `/summary`) + `redirect` reativo via `AuthStatus`/`GoRouterRefreshListenable` |
 | Pipeline de extração de PDF | `services/pdf/extractor.py` | pdfplumber → fallback PyMuPDF+Tesseract OCR; hash SHA-256 dedupe |
 | Parser Itaú | `_parse_itau_row` | Implementado |
 | Categorizador (regras + ML) | `services/ai/categorizer.py` | 10 categorias; ML não treinado |
@@ -162,25 +178,27 @@ financily/
 | Parser Santander | Função existe | `_parse_santander_row` ainda é cópia do Itaú — placeholder |
 | OCR | Pipeline codificado, refatorado para memória, integrado ao upload | Caminho OCR (`_try_ocr`/Tesseract) não exercitado por nenhum teste/fixture real ainda |
 | Categorizador ML | Pipeline completo, integrado ao upload (`categorize()` chamado por transação); correção manual via `PATCH /transactions/{id}` agora gera sinal `confidence_score=1.0` | `train()` nunca chamado; sem `categorizer.joblib`; toda transação que não bate regra de keyword fica `OTHER`/confidence `0.0`; correções manuais ainda não são usadas como dataset de retreino |
-| Roteamento Flutter | Funciona | `redirect` é `// TODO`; só 2 telas de 8+ planejadas |
-| Login Flutter | UI completa | Não conectado ao backend `/auth/login` real (agora disponível) |
-| Projeto Flutter | `pubspec.yaml` rico | Sem scaffold de plataforma; fontes `Syne-*.ttf` ausentes |
+| **Roteamento Flutter** | ✅ 7 rotas + `redirect` reativo por `AuthStatus` | Faltam telas de Analytics/AI Chat/Configurações dedicadas (placeholders "Em breve" no bottom nav) |
+| **Login/Registro Flutter** | ✅ Conectados a `/api/v1/auth/*`, JWT persistido | Sem "esqueci minha senha"; sem `/auth/logout` no backend (logout é só client-side) |
+| **Dashboard/Transações/Resumo/Upload Flutter** | ✅ Consomem `GET /transactions/`, `GET /transactions/summary`, `POST /uploads/pdf` | Score de saúde financeira e mapa de gastos (heatmap) seguem com dados mock — sem endpoint `/analytics/*` para alimentá-los |
+| Projeto Flutter | `pubspec.yaml` rico, `http_parser` adicionado | Sem scaffold de plataforma (`flutter create .`); fontes `Syne-*.ttf` ausentes; `flutter pub get`/`analyze`/`test` nunca executados — código desta sessão não foi validado pelo compilador Dart |
 
 ---
 
 ## 5. Funcionalidades planejadas, não iniciadas
 
 - **SSE de progresso para upload**: `POST /uploads/pdf` hoje é síncrono (MVP); stream de progresso fica como follow-up
-- **Analytics API real**: dashboard payload, heatmap, categorias, forecast (Prophet), health-score (conectar `health_score.py`), behavioral, subscriptions
+- **Analytics API real**: dashboard payload, heatmap, categorias, forecast (Prophet), health-score (conectar `health_score.py`), behavioral, subscriptions — destrava o score/heatmap reais no Flutter
 - **Análise comportamental** (anomaly detection, clustering): zero código
 - **Detecção de assinaturas recorrentes**: zero código
-- **Assistente IA** (chat): stub 501 apenas
+- **Assistente IA** (chat): stub 501 apenas; tab "AI Chat" no Flutter é placeholder "Em breve"
 - **Exportação PDF/Excel/CSV**: stubs 501; faltam libs (`openpyxl`, `reportlab`/`weasyprint`) no requirements
 - **Notificações**: nenhum código
-- **Tela de Configurações** (Flutter): pasta nem existe
-- **Testes automatizados**: zero testes apesar de pytest configurado
-- **Multi-plataforma Flutter**: scaffold ausente
-- **Conectar Flutter ao backend**: `frontend/lib/core/network/` (Dio + interceptor de token) — backend já expõe `/auth/*` funcional
+- **Tela de Configurações** (Flutter): pasta nem existe; logout hoje vive num bottom sheet acionado pelo tab "Config"
+- **Testes automatizados Flutter**: zero testes (e `flutter test` nunca executado — falta scaffold/SDK validado)
+- **Testes automatizados backend**: 49 testes cobrem extractor/upload/transactions; `categorizer`, `health_score`, `security`, auth routes ainda sem cobertura
+- **Multi-plataforma Flutter**: scaffold ausente (`flutter create .` pendente, com confirmação do usuário)
+- **Migração para codegen** (`freezed`/`json_serializable`/`riverpod_generator`): adiada até `flutter analyze`/`flutter test` rodarem com sucesso (ver Fase 4)
 
 ---
 
@@ -224,6 +242,10 @@ financily/
 - **`TransactionRepository.create()` comita uma transação por vez** — para faturas com muitas linhas, `POST /uploads/pdf` faz N commits sequenciais. Aceitável para volumes de fatura típicos (10–100 linhas); revisar para bulk-insert se necessário (regra Análise de Dados #3 — não otimizar prematuramente).
 - 🆕 **`GET /transactions/?limit=N` faz uma query `SELECT` + uma query `COUNT` separada** para montar `total` — duplica o custo de leitura por requisição. Aceitável para volumes do MVP; revisar (ex.: window function) apenas se virar gargalo medido.
 - 🆕 **`PATCH /transactions/{id}` sempre seta `confidence_score=1.0` quando há qualquer campo alterado** — assume que toda correção manual é 100% confiável. Correto para o caso de uso (usuário corrigindo a própria transação), mas é uma decisão de produto implícita; revisar se no futuro outras roles (ex. admin) puderem editar transações de terceiros.
+- 🆕 **Frontend sem codegen é decisão temporária, não definitiva** — toda a camada `data/` usa `fromJson`/`toJson` manuais e os providers usam `StateNotifier`/`FutureProvider` clássicos (sem `@riverpod`/`freezed`). Reduz boilerplate de build_runner durante a validação visual, mas qualquer mudança de schema do backend exige editar os `fromJson` manualmente em paralelo. Decisão a ser revisitada após `flutter pub get && flutter analyze && flutter test` rodarem com sucesso (ver Fase 4).
+- 🆕 **Nenhum comando do Flutter SDK foi executado nesta sessão** (`pub get`, `create`, `analyze`, `test`, `run`) — todo o código novo (~15 arquivos) foi escrito e revisado manualmente (consistência de imports, tipos e nomes de campos entre `data/models/*` e os schemas Pydantic do backend), mas **erros de compilação Dart só serão detectados quando o usuário rodar `flutter pub get`/`flutter analyze`** em um ambiente com o SDK configurado.
+- 🆕 **`_FinancialHealthScoreCard` e `_SpendingHeatmapWidget` no dashboard continuam 100% mock** — não há endpoint `/analytics/*` real para alimentá-los; conectá-los faria parte do trabalho de Analytics (fora do escopo da Fase 4, que cobriu apenas `transactions`/`uploads`/`auth`).
+- 🆕 **Dedupe de transações por hash (cross-user) e demais riscos do backend permanecem inalterados** — ver entradas anteriores; Fase 4 não tocou backend além de leitura via Dio.
 
 ---
 
@@ -249,6 +271,11 @@ financily/
 - [ ] Validar `alembic upgrade head` contra PostgreSQL real (Docker local ou Supabase)
 - [ ] Implementar `/auth/logout` (revogação de refresh token) — opcional para MVP
 - [ ] Usar correções manuais (`PATCH /transactions/{id}`) como dataset de retreino do categorizador ML
+- [ ] 🆕 **`flutter pub get && flutter create . && flutter analyze && flutter test`** — primeira validação do ambiente Flutter desta sessão; pré-requisito para qualquer decisão de codegen (regra de continuidade, ver Fase 4)
+- [ ] 🆕 **Decidir migração para `freezed`/`json_serializable`/`riverpod_generator` (codegen)** — modelos `data/models/*` hoje são manuais (`fromJson`/`toJson`); providers usam `StateNotifier`/`FutureProvider` clássicos. Decisão adiada para depois de `flutter analyze`/`flutter test` (Fase 4)
+- [ ] 🆕 **Conectar `_FinancialHealthScoreCard`/`_SpendingHeatmapWidget` (dashboard) a dados reais** — depende de Analytics API real (`/analytics/health-score`, heatmap)
+- [ ] 🆕 **Endpoint `GET /transactions/{id}`** — tela de detalhe de transação ainda não existe no Flutter nem no backend
+- [ ] 🆕 **Telas de Analytics/AI Chat/Configurações no Flutter** — atualmente placeholders "Em breve" (SnackBar) no bottom nav
 
 ---
 
@@ -277,26 +304,27 @@ financily/
 
 | Módulo | Status |
 |---|---|
-| **Autenticação** | ✅ **Funcional** (register/login/refresh/JWT validados ponta a ponta) — falta apenas logout/revocation |
-| Dashboard | 🟡 Em desenvolvimento (UI completa + mock; backend `/analytics/dashboard` ainda é stub 501) |
-| **Upload de PDFs** | ✅ **Funcional** (MVP síncrono) — `POST /uploads/pdf`: extractor → categorizer → repository, dedupe por hash, status PENDING→PROCESSING→COMPLETED/FAILED. Validado com extractor mockado (sem fixture de PDF real ainda) |
+| **Autenticação** | ✅ **Funcional** (register/login/refresh/JWT validados ponta a ponta no backend; **Flutter conectado** — login/registro reais, JWT persistido via `flutter_secure_storage`, refresh automático em 401) — falta apenas logout/revocation no backend |
+| **Frontend ↔ Backend (Fase 4)** | 🟢 **Conectado** — `core/network/` (Dio + `AuthInterceptor` + refresh-and-retry), 8 telas (splash/login/registro/dashboard/upload/transações/resumo), GoRouter com `redirect` reativo por `AuthStatus`. Riverpod clássico (sem codegen), `fromJson`/`toJson` manuais — decisão temporária (ver §8/§15) |
+| Dashboard | 🟢 **Parcialmente conectado** — saldo, receitas/despesas, pizza de categorias e transações recentes consomem `transactionsSummaryProvider`/`transactionsProvider` reais; `_FinancialHealthScoreCard` e `_SpendingHeatmapWidget` continuam 100% mock (sem `/analytics/*` real) |
+| **Upload de PDFs** | ✅ **Funcional** (MVP síncrono) — `POST /uploads/pdf`: extractor → categorizer → repository, dedupe por hash, status PENDING→PROCESSING→COMPLETED/FAILED. **Tela Flutter conectada** (`file_picker` + `Dio.MultipartFile`), exibe resultado (transações criadas/duplicadas). Validado com extractor mockado no backend (sem fixture de PDF real ainda) |
 | Parser de faturas (Itaú) | 🟡 Em desenvolvimento (lógica existe e **agora integrada** ao endpoint de upload; sem fixture real de PDF para validar `_try_pdfplumber`) |
 | Parser de extratos (Santander) | ❌ Não iniciado (stub = cópia do Itaú) |
 | OCR | 🟡 Em desenvolvimento (pipeline refatorado para memória e **integrado ao upload** como fallback; caminho OCR não exercitado por teste real) |
 | **Banco de dados** | ✅ **Funcional** — schema completo (`users`, `uploads`, `transactions`), Alembic configurado, migration inicial validada |
 | **API** | ✅ **Funcional** — app sobe, `/api/docs` e `/openapi.json` ok, 25 rotas registradas |
-| **Transactions API** | ✅ **Funcional** — `GET /` (paginação/filtros/busca/ordenação), `GET /summary` (agregados), `PATCH /{id}` (corrige categoria/subcategoria), `DELETE /{id}` |
+| **Transactions API** | ✅ **Funcional** — `GET /` (paginação/filtros/busca/ordenação), `GET /summary` (agregados), `PATCH /{id}` (corrige categoria/subcategoria), `DELETE /{id}`. **Telas Flutter conectadas**: Transações (lista + filtros + busca) e Resumo (totais + categorias) |
 | Categorização automática | 🟡 Em desenvolvimento (regras prontas e integradas ao endpoint de upload; ML não treinado — toda transação fora das regras de keyword fica `OTHER`/confidence `0.0`; correção manual via `PATCH /transactions/{id}` agora seta confidence `1.0`) |
 | Previsão financeira | ❌ Não iniciado |
-| Assistente IA | ❌ Não iniciado (stub 501) |
+| Assistente IA | ❌ Não iniciado (stub 501; tela Flutter "AI Chat" é placeholder "Em breve") |
 | Exportação PDF | ❌ Não iniciado (stub 501) |
 | Exportação Excel | ❌ Não iniciado (stub 501) |
 | Exportação CSV | ❌ Não iniciado (stub 501) |
 | Notificações | ❌ Não iniciado |
-| Configurações | ❌ Não iniciado |
-| Design System | 🟡 Em desenvolvimento (tokens definidos e usados; fontes faltando) |
+| Configurações | 🟡 Placeholder (bottom sheet com logout funcional; demais opções "Em breve") |
+| Design System | 🟡 Em desenvolvimento (tokens `AppColors` usados nas 8 telas conectadas; fontes Syne ainda faltando; `_C`/`_Grad` duplicados no dashboard permanecem como débito) |
 | Responsividade | ❌ Não verificado (telas mobile-first apenas) |
-| Multi plataforma | ❌ Não iniciado (scaffold Flutter ausente) |
+| Multi plataforma | ❌ Não iniciado — `flutter create .`/`pub get`/`analyze`/`test` nunca executados (SDK indisponível nesta sessão) |
 
 ---
 
@@ -304,26 +332,27 @@ financily/
 
 1. ✅ ~~Desbloquear o backend~~ — **concluído na Fase 1**
 2. ✅ ~~Upload de PDF end-to-end~~ — **concluído na Fase 2** (MVP síncrono: `POST /api/v1/uploads/pdf`, extractor → categorizer → repository, dedupe por hash)
-3. ✅ ~~Transactions API completa~~ — **concluído nesta sessão** (paginação/filtros/busca/ordenação, summary, update de categoria/subcategoria, delete)
-4. **Conectar Flutter ao backend**: `frontend/lib/core/network/` (Dio + interceptor de refresh token), telas de login/registro reais consumindo `/api/v1/auth/*` — agora também pode consumir `POST /uploads/pdf` e `GET /transactions/*`
-5. **Analytics API real**: começar por `/analytics/health-score` (já existe `health_score.py`) e `/analytics/dashboard` (pode reaproveitar `TransactionRepository.get_summary`)
-6. **Frontend — desbloquear scaffold**: `flutter create .` preservando `lib/`/`pubspec.yaml`/`assets/`; resolver fontes Syne
-7. **Parser Santander real** (substituir stub)
-8. **Categorizador ML**: treinar com dados reais de faturas Itaú/Santander; considerar correções manuais (`PATCH /transactions/{id}`) como dataset
-9. **Forecast (Prophet) + behavioral**: implementar após volume real de transações
-10. **Testes**: cobrir `core/security.py`, repositories de user/upload, rotas de auth, `categorizer.py`, `health_score.py` (extractor, uploads e transactions já cobertos — 49 testes)
-11. **Fixtures de PDF reais (Itaú/Santander)** para testar `_try_pdfplumber`/`_try_ocr` ponta a ponta (atualmente mockado)
-12. **Validar Alembic contra PostgreSQL real** antes do primeiro deploy
+3. ✅ ~~Transactions API completa~~ — **concluída na Fase 3** (paginação/filtros/busca/ordenação, summary, update de categoria/subcategoria, delete)
+4. ✅ ~~Conectar Flutter ao backend~~ — **concluído nesta sessão (Fase 4)**: `core/network/` (Dio + `AuthInterceptor` + refresh), login/registro reais, JWT persistido, upload/transações/resumo conectados, 8 telas, GoRouter com redirect reativo
+5. 🔜 **Validar ambiente Flutter** (PRIORIDADE — bloqueia tudo abaixo): `flutter pub get && flutter create . && flutter analyze && flutter test && flutter run -d windows`. Primeira execução do SDK nesta fase do projeto; corrigir erros de compilação encontrados nos ~15 arquivos novos antes de seguir
+6. **Decidir migração para codegen** (`freezed`/`json_serializable`/`riverpod_generator`/`build_runner`) com base no resultado do passo 5 — ver §8/§15
+7. **Analytics API real**: começar por `/analytics/health-score` (já existe `health_score.py`) e `/analytics/dashboard` (pode reaproveitar `TransactionRepository.get_summary`); depois conectar `_FinancialHealthScoreCard`/`_SpendingHeatmapWidget` no Flutter
+8. **Parser Santander real** (substituir stub)
+9. **Categorizador ML**: treinar com dados reais de faturas Itaú/Santander; considerar correções manuais (`PATCH /transactions/{id}`) como dataset
+10. **Forecast (Prophet) + behavioral**: implementar após volume real de transações
+11. **Testes**: cobrir `core/security.py`, repositories de user/upload, rotas de auth, `categorizer.py`, `health_score.py` no backend (49 testes já cobrem extractor/uploads/transactions); iniciar testes Flutter (`flutter test` — zero hoje)
+12. **Fixtures de PDF reais (Itaú/Santander)** para testar `_try_pdfplumber`/`_try_ocr` ponta a ponta (atualmente mockado)
+13. **Validar Alembic contra PostgreSQL real** antes do primeiro deploy
 
 ---
 
 ## 14. Estimativa de conclusão
 
-**~33–35% do escopo total** descrito no `README.md`/`Prompt Inicial.txt`.
+**~42–45% do escopo total** descrito no `README.md`/`Prompt Inicial.txt`.
 
-A fundação do backend (Fase 1) e o upload de PDF end-to-end (Fase 2) já estavam prontos e validados. Nesta sessão (Fase 3), a **Transactions API ficou completa**: `GET /` (paginação, filtros por data/categoria/tipo, busca textual, ordenação), `GET /summary` (totais de receita/despesa/saldo e agregados por categoria), `PATCH /{id}` (correção manual de categoria/subcategoria, com sinal `confidence_score=1.0`) e `DELETE /{id}`, todos cobertos por 23 novos testes de integração (total agora 49). Isso completa o segundo módulo de domínio (dados agora podem ser consultados, corrigidos e removidos pelo usuário, não só importados), elevando o percentual em ~5 pontos.
+A Fase 3 havia deixado o backend em ~33–35% (Transactions API completa, 49 testes). Nesta sessão (Fase 4), o **frontend foi conectado ao backend de ponta a ponta pela primeira vez**: login e registro reais (`/api/v1/auth/*`), JWT persistido (`flutter_secure_storage`) com refresh automático em 401, upload de PDF real (`POST /uploads/pdf` via `file_picker` + Dio multipart), tela de transações consumindo `GET /transactions/` (filtros, busca, paginação) e tela de resumo consumindo `GET /transactions/summary`, dashboard parcialmente conectado (saldo, receitas/despesas, pizza de categorias, transações recentes), logout funcional e roteamento reativo (`GoRouter` + `redirect` por `AuthStatus`). Isso é o primeiro fluxo **visualmente utilizável** do produto (login → upload → transações → resumo), justificando o salto de ~8-10 pontos mesmo sem novo código de backend.
 
-O que falta é majoritariamente: (a) conectar o Flutter ao backend (incluindo telas que consumam upload/transactions), (b) Analytics API real (`health-score`, `dashboard`, forecast), (c) scaffold de plataforma Flutter, (d) treinar o categorizador ML, (e) fixtures de PDF reais para validar o pipeline de extração ponta a ponta, (f) testes para os módulos restantes (`categorizer`, `health_score`, `security`, auth routes, repositories de user/upload).
+O percentual permanece moderado porque: (a) nenhum comando do Flutter SDK foi executado ainda — erros de compilação Dart nos ~15 arquivos novos são desconhecidos até `flutter pub get`/`analyze`/`test`; (b) a decisão de codegen (`freezed`/`riverpod_generator`) está em aberto; (c) `_FinancialHealthScoreCard`/`_SpendingHeatmapWidget` continuam mock (sem Analytics API real); (d) Analytics/forecast/IA permanecem stubs 501; (e) parser Santander, categorizador ML treinado, fixtures de PDF reais e testes Flutter ainda não existem; (f) scaffold de plataforma (`flutter create .`) ainda não gerado.
 
 ---
 
@@ -334,10 +363,11 @@ O que falta é majoritariamente: (a) conectar o Flutter ao backend (incluindo te
 | **Fase 1 — Fundação do Backend** | Banco de dados, auth JWT, schema, repositórios, Alembic, contrato de API (stubs) | ✅ Concluída (commit `4142824`) |
 | **Fase 1.5 — Governança e Estruturação** | `CLAUDE_PROJECT_RULES.md`, `docs/session_start.md`, `docs/session_end.md`, auditoria, atualização de `project_status.md`/`next_session.md` | ✅ Concluída (commits `f8d9b78`/`f7dd82c`) |
 | **Fase 2 — Primeira fatia vertical de valor** | Upload de PDF end-to-end (extractor → categorizer → repository), dedupe, 26 testes (18 unit + 8 integração) | ✅ Concluída (commits `1c362f2`/`3ae52b5`) |
-| **Fase 3 — Transactions API** | `GET /` (paginação/filtros/busca/ordenação), `GET /summary`, `PATCH /{id}`, `DELETE /{id}`, 23 testes de integração | ✅ Concluída (esta sessão, commit pendente) |
-| **Fase 4 — Conexão Flutter + Analytics real** | Conexão Flutter↔Backend (`core/network/` + login/upload/transactions reais), Analytics API real (`health-score`, `dashboard`, forecast), Categorizador ML treinado, Parser Santander real, fixtures de PDF reais | ⏭️ Próxima (ver `docs/next_session.md`) |
-| **Fase 5 — Frontend completo** | `flutter create .` (scaffold de plataforma), 8+ telas conectadas ao backend, fontes Syne resolvidas | ❌ Não iniciada |
-| **Fase 6 — Produção** | Testes automatizados restantes, PostgreSQL real validado, rate limiting/auth hardening, CI (`.github/workflows/`), exportações PDF/Excel/CSV, notificações, assistente IA, SSE de progresso | ❌ Não iniciada |
+| **Fase 3 — Transactions API** | `GET /` (paginação/filtros/busca/ordenação), `GET /summary`, `PATCH /{id}`, `DELETE /{id}`, 23 testes de integração | ✅ Concluída (commits `7b5f37c`/`f642155`) |
+| **Fase 4 — Conexão Frontend↔Backend** | `core/network/` (Dio + AuthInterceptor + refresh), login/registro/JWT/logout reais, upload/transações/resumo conectados, GoRouter reativo, 8 telas, Riverpod clássico sem codegen (decisão temporária) | ✅ Concluída (esta sessão, commit pendente) |
+| **Fase 4.5 — Validação do SDK Flutter** | `flutter pub get && flutter create . && flutter analyze && flutter test && flutter run`; corrigir erros de compilação dos ~15 arquivos novos; decidir migração para codegen (`freezed`/`riverpod_generator`) | ⏭️ Próxima (ver `docs/next_session.md`) |
+| **Fase 5 — Analytics real + Dashboard completo** | `/analytics/health-score` e `/analytics/dashboard` reais; conectar `_FinancialHealthScoreCard`/`_SpendingHeatmapWidget`; Parser Santander real; Categorizador ML treinado; fixtures de PDF reais | ❌ Não iniciada |
+| **Fase 6 — Produção** | Testes automatizados restantes (backend + Flutter), PostgreSQL real validado, rate limiting/auth hardening, CI (`.github/workflows/`), exportações PDF/Excel/CSV, notificações, assistente IA, SSE de progresso | ❌ Não iniciada |
 
 ---
 
@@ -524,3 +554,88 @@ Todas as três libs **já constam em `requirements.txt`**, mas não foram instal
 - ✅ 23 novos testes de integração passando (49/49 no total)
 - ✅ App sobe sem erros após as mudanças (25 rotas)
 - ✅ Nenhuma funcionalidade fora do escopo (Analytics, Flutter, IA, Open Finance, Dashboard) implementada
+
+---
+
+## Última Sessão — Fase 4 (Conexão Frontend-Backend)
+
+**Data**: 2026-06-12
+**Objetivo**: Primeira vez que o Financily se torna **visualmente utilizável** — conectar o Flutter ao backend real (sem mocks) cobrindo o fluxo completo: login → upload de PDF → lista de transações → resumo financeiro. Escopo explicitamente limitado a essa conexão: sem IA, sem Open Finance, sem Analytics avançado, sem forecast, sem novas rotas de backend (reuso 100% dos endpoints já existentes das Fases 1-3).
+
+### Decisão arquitetural central (diretriz explícita do usuário)
+**Sem codegen nesta fase.** Toda a camada `data/` usa classes JSON manuais (`fromJson`/`toJson` escritos à mão) e os providers usam Riverpod clássico (`Provider`, `StateNotifierProvider`, `FutureProvider.autoDispose`) — **sem** `freezed`, **sem** `build_runner`, **sem** `@riverpod` (codegen). Documentado como **débito técnico temporário** (§8/§9): a decisão de migrar para codegen será revisitada **depois** que `flutter pub get && flutter create . && flutter analyze && flutter test` rodarem com sucesso em um ambiente com o SDK configurado (próxima sessão, Fase 4.5).
+
+### Arquivos criados (24 novos arquivos)
+
+**Camada de rede (`core/network/`)**:
+- `api_config.dart` — `baseUrl = 'http://127.0.0.1:8000'`, paths dos endpoints.
+- `dio_client.dart` — instância `Dio` configurada (baseUrl, timeouts, interceptors).
+- `token_storage.dart` — wrapper sobre `flutter_secure_storage` para access/refresh token + dados do usuário.
+- `auth_interceptor.dart` — injeta `Authorization: Bearer`, intercepta `401`, tenta `POST /auth/refresh` e repete a requisição original; em falha do refresh, notifica `SessionExpiredNotifier`.
+- `providers.dart` — `secureStorageProvider`, `tokenStorageProvider`, `sessionExpiredProvider` (`SessionExpiredNotifier extends ChangeNotifier`, evita dependência circular `core/network` ↔ `features/auth`), `dioProvider`.
+- `api_exception.dart` — `ApiException.fromDioException()` mapeia timeout/connection/400/401/404/409/413/422 para mensagens PT-BR amigáveis.
+
+**`core/utils/jwt_utils.dart`** — `decodeJwtPayload()` decodifica o claim `sub` do JWT manualmente via `dart:convert` (sem dependência de pacote JWT).
+
+**Auth (`features/auth/`)**:
+- `data/models/token_pair.dart`, `data/models/user_model.dart` (`UserModel{id, email, name?, subscriptionTier, isActive}` + `displayName`).
+- `data/auth_repository.dart` — `register()`, `login()`, `tryRestoreSession()`, `logout()`, `_userFromAccessToken()` (decodifica JWT quando `/users/me` não está disponível).
+- `presentation/providers/auth_provider.dart` — `AuthState{status, user, errorMessage}`, enum `AuthStatus{unknown, authenticating, authenticated, unauthenticated}`, `AuthController` (`login`, `register`, `logout`, `_restoreSession`, `_handleSessionExpired`).
+- `presentation/screens/register_screen.dart` — formulário nome/e-mail/senha/confirmação, `ref.listen` para erros, chama `register()`.
+
+**Transações (`features/transactions/`)**:
+- `data/models/transaction_model.dart` (`TransactionModel` + `isCredit` getter, `TransactionListModel{items, total, skip, limit, hasMore}`).
+- `data/models/transaction_summary_model.dart` (`CategorySummaryModel`, `TransactionSummaryModel`).
+- `data/transactions_repository.dart` — `getTransactions()` → `GET /api/v1/transactions/`, `getSummary()` → `GET /api/v1/transactions/summary`.
+- `presentation/providers/transactions_provider.dart` — `TransactionsFilter`, `TransactionsFilterNotifier`, `transactionsProvider`/`transactionsSummaryProvider` (`FutureProvider.autoDispose`).
+- `presentation/screens/transactions_screen.dart` — lista com filtros (data/categoria/tipo), busca, pull-to-refresh, paginação.
+- `presentation/screens/summary_screen.dart` — saldo do período, cards de receitas/despesas, breakdown por categoria com barras de progresso.
+- `presentation/widgets/category_ui.dart` — `categoryUiFor(String category)`: mapeia categorias do backend para label PT-BR + ícone Material + `AppColors`.
+
+**Upload (`features/upload/`)**:
+- `data/models/upload_result_model.dart` (`UploadResultModel{..., isCompleted, isFailed}`).
+- `data/upload_repository.dart` — `uploadPdf()` via `FormData` + `MultipartFile.fromFile(..., contentType: MediaType('application','pdf'))` (pacote `http_parser`).
+- `presentation/providers/upload_provider.dart` — `StateNotifierProvider` para estado de upload (idle/loading/success/error).
+- `presentation/screens/upload_screen.dart` — seleção de PDF (`file_picker`), seleção de banco, envio, exibição do resultado (transações criadas/duplicadas ou erro).
+
+**Splash**:
+- `features/splash/presentation/screens/splash_screen.dart` — tela exibida enquanto `AuthController` restaura a sessão salva (`AuthStatus.unknown`).
+
+### Arquivos atualizados (4)
+- `frontend/lib/core/router/app_router.dart` — adicionado `GoRouterRefreshListenable extends ChangeNotifier` (escuta `authControllerProvider` via `ref.listen`, chama `notifyListeners()` em mudança de `AuthStatus`); `appRouterProvider` agora usa `refreshListenable` + `redirect` baseado em `AuthStatus` (unknown→`/splash`, authenticated em rota de auth/splash→`/dashboard`, unauthenticated fora de auth→`/login`); 7 rotas registradas (`/splash`, `/login`, `/register`, `/dashboard`, `/upload`, `/transactions`, `/summary`).
+- `frontend/lib/features/auth/presentation/screens/login_screen.dart` — conectado a `authControllerProvider` (campos reais de e-mail/senha, `ref.listen` para erros via `SnackBar`, loading state no botão, link para `/register`).
+- `frontend/lib/features/dashboard/presentation/screens/dashboard_screen.dart` — reescrita parcial (515 linhas alteradas): `_BalanceSummaryCard`, `_CategoryPieWidget` (com `_buildPieCategories()` real, top-5 + "Outros", `centerLabel` dinâmico) e `_RecentTransactionsCard`/`_RecentTransactionsTile` agora consomem `transactionsSummaryProvider`/`transactionsProvider`; `_buildAppBar()` mostra nome real do usuário (via `authControllerProvider`); bottom nav: Upload navega para `/upload`, Configurações abre bottom sheet com logout funcional, Analytics/AI Chat exibem "Em breve". `_FinancialHealthScoreCard` e `_SpendingHeatmapWidget` permanecem mock (fora do escopo — dependem de Analytics API real).
+- `frontend/pubspec.yaml` — adicionada dependência `http_parser: ^4.0.2` (necessária para `MultipartFile` com `contentType` explícito no upload).
+
+### Decisões arquiteturais tomadas
+- **Sem codegen (ver acima)** — Riverpod clássico + `fromJson`/`toJson` manuais em toda `data/`.
+- **Camada `domain/` pulada** para `transactions`/`upload` — providers consomem repositórios concretos diretamente (sem abstrações/use cases intermediários), documentado como simplificação temporária dado o escopo de validação visual.
+- **`SessionExpiredNotifier extends ChangeNotifier`** como ponte entre `core/network` e `features/auth`, evitando import circular (`AuthInterceptor` não pode depender de `auth_provider.dart` diretamente).
+- **JWT decodificado manualmente** (`jwt_utils.dart::decodeJwtPayload`) para extrair o claim `sub` quando não há endpoint `/users/me` — evita dependência de pacote JWT extra.
+- **`NumberFormat.currency(locale: 'pt_BR', symbol: 'R$')`** (pacote `intl`) em vez de `DateFormat` com locale pt_BR, para não precisar chamar `initializeDateFormatting()`; datas formatadas com helpers manuais (`_formatDate`/`_relativeDate`).
+- **`categoryUiFor()`** centraliza o mapeamento categoria→(label PT-BR, ícone, cor), reusado em dashboard, transações e resumo.
+- **Ícones de Receitas/Despesas padronizados**: `arrow_upward_rounded` (Receitas) / `arrow_downward_rounded` (Despesas) em todas as telas — corrigida inconsistência encontrada em `summary_screen.dart` durante a revisão final.
+
+### Validação executada
+- **Revisão manual de consistência** em ~28 arquivos (24 novos + 4 atualizados): nomes de campos em `data/models/*.fromJson` cruzados contra os schemas Pydantic do backend (`schemas/transaction.py`, `schemas/upload.py`, `schemas/user.py`); tipos e getters de providers/repositórios/telas conferidos; `Grep` confirmou ausência de referências residuais a mocks antigos (`_MockTransaction`, `_transactions`, `_categories`, `Navigator.push`, `TODO`).
+- **Nenhum comando do Flutter SDK foi executado** (`pub get`, `create`, `analyze`, `test`, `run`) — SDK indisponível neste ambiente. **Checklist para a próxima sessão**:
+  ```bash
+  cd frontend
+  flutter pub get
+  flutter create .          # gera scaffold de plataforma (windows/android/web), preservando lib/ e pubspec.yaml
+  flutter analyze            # primeira validação do compilador Dart sobre os ~24 arquivos novos
+  flutter test                # nenhum teste escrito ainda — espera-se "no tests found"
+  flutter run -d windows      # smoke test visual do fluxo login → upload → transações → resumo
+  ```
+
+### Critérios de sucesso da sessão
+- ✅ Login real conectado ao backend (`POST /auth/login`)
+- ✅ Registro real conectado ao backend (`POST /auth/register`)
+- ✅ Persistência do JWT (`flutter_secure_storage`, restauração de sessão via `tryRestoreSession()`)
+- ✅ Tela de Upload PDF conectada a `POST /api/v1/uploads/pdf`
+- ✅ Tela de Transações consumindo `GET /api/v1/transactions/` (com filtros/busca/paginação)
+- ✅ Tela de Summary consumindo `GET /api/v1/transactions/summary`
+- ✅ Tratamento de loading e erros (`AsyncValue.when` em todas as telas conectadas, `ApiException` com mensagens PT-BR)
+- ✅ Logout funcional (limpa tokens, `AuthStatus.unauthenticated`, redireciona para `/login`)
+- ✅ Nenhuma funcionalidade fora do escopo (IA, Open Finance, Analytics avançado, Forecast, novas rotas de backend) implementada
+- ⏳ **Validação ponta a ponta em runtime** ainda pendente — depende de `flutter pub get`/`analyze`/`run` (Fase 4.5, próxima sessão)
